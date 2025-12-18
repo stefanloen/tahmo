@@ -25,11 +25,7 @@ use embassy_sync::channel::Channel;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use static_cell::StaticCell;
 use embassy_rp::adc;
-use embassy_rp::usb::{Driver, Instance, InterruptHandler};
-use embassy_usb::UsbDevice;
-use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
-use embassy_usb::driver::EndpointError;
-use embassy_rp::otp::{get_chipid};
+use embassy_rp::usb::{Driver, InterruptHandler};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -50,18 +46,21 @@ mod messages;
 mod battery;
 mod monitor;
 mod dump;
+mod usb;
+mod interface;
 
 use crate::battery::Battery;
 use crate::comms::task_comms;
 use crate::compute::task_compute;
 use crate::control::task_control;
+use crate::usb::usb_task;
+use crate::interface::interface_task;
 use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg};
 use crate::gnss::GNSSSensor;
 use crate::measure::task_measure;
 use crate::monitor::task_monitor;
 use crate::rockblock::RockBlock9704;
 use crate::storage::FlashStorage;
-use crate::utils::uid_to_str;
 
 static MEASURE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, MeasureReqMsg, 8> = Channel::new();
 static COMPUTE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, ComputeReqMsg, 8> = Channel::new();
@@ -128,44 +127,7 @@ async fn main(spawner: Spawner) {
     
     // USB
     let usb_driver = Driver::new(p.USB, Irqs);
-
-    let id = get_chipid().unwrap();
-    let serial_number = uid_to_str(id);
-
-    let config = {
-        // Vendor ID: 1209 (pid.codes), Product ID: 0001 (Test PID)
-        let mut config = embassy_usb::Config::new(0x1209, 0x0001); 
-        config.manufacturer = Some("TAHMO");
-        config.product = Some("TAHMO WLM");
-        config.serial_number = Some("Eerst ff ZO");
-        config.max_power = 500;
-        config.max_packet_size_0 = 64;
-        config
-    };
-
-    let mut builder = {
-        static CONFIG_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
-        static BOS_DESCRIPTOR: StaticCell<[u8; 256]> = StaticCell::new();
-        static CONTROL_BUF: StaticCell<[u8; 64]> = StaticCell::new();
-
-        let builder = embassy_usb::Builder::new(
-            usb_driver,
-            config,
-            CONFIG_DESCRIPTOR.init([0; 256]),
-            BOS_DESCRIPTOR.init([0; 256]),
-            &mut [], // no msos descriptors
-            CONTROL_BUF.init([0; 64]),
-        );
-        builder
-    };
-
-    let mut class = {
-        static STATE: StaticCell<State> = StaticCell::new();
-        let state = STATE.init(State::new());
-        CdcAcmClass::new(&mut builder, state, 64)
-    };
-
-    let usb = builder.build();
+    let usb_context = usb::UsbContext::new(usb_driver);
 
     // Battery peripherals
     let pin_bat_stat1 = Input::new(p.PIN_22, Pull::None);
@@ -248,10 +210,16 @@ async fn main(spawner: Spawner) {
 
     info!("[main] spawning tasks");
 
-    let result = spawner.spawn(usb_task(usb));
+    let result = spawner.spawn(usb_task(usb_context.device));
 
     if result.is_err() {
         error!("Failed to spawn USB task: {}", result.unwrap_err());
+    }
+
+    let result = spawner.spawn(interface_task(usb_context.class));
+
+    if result.is_err() {
+        error!("Failed to spawn Interface task: {}", result.unwrap_err());
     }
 
     let result = spawner.spawn(task_measure(
@@ -319,23 +287,6 @@ async fn main(spawner: Spawner) {
     }
     
     info!("[main] startup complete in {} ms", Instant::now().as_millis() - start.as_millis());
-
-    // Wait for connection and echo if connected
-    loop {
-        class.wait_connection().await;
-        info!("Connected");
-        let _ = echo(&mut class).await;
-        info!("Disconnected");
-    }
-}
-
-type MyUsbDriver = Driver<'static, USB>;
-type MyUsbDevice = UsbDevice<'static, MyUsbDriver>;
-
-#[embassy_executor::task]
-async fn usb_task(mut usb: MyUsbDevice) -> ! {
-    info!("[usb_]: starting");
-    usb.run().await
 }
 
 #[embassy_executor::task]
@@ -358,26 +309,3 @@ async fn watchdog_feeder(wdg: &'static mut Watchdog) {
     }
 }
 
-struct Disconnected {}
-
-impl From<EndpointError> for Disconnected {
-    fn from(val: EndpointError) -> Self {
-        match val {
-            EndpointError::BufferOverflow => defmt::panic!("Buffer overflow"),
-            EndpointError::Disabled => Disconnected {},
-        }
-    }
-}
-
-async fn echo<'d, T: Instance + 'd>(class: &mut CdcAcmClass<'d, Driver<'d, T>>) -> Result<(), Disconnected> {
-    let mut buf = [0; 64];
-    loop {
-        let n = class.read_packet(&mut buf).await?;
-        let data = &buf[..n];
-        info!("data: {:x}", data);
-        class.write_packet(data).await?;
-
-        let extra = b" !\r\n";
-        class.write_packet(extra).await?;
-    }
-}
