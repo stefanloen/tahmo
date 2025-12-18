@@ -1,39 +1,60 @@
 use defmt::info;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
+use crate::messages::{IntReqMsg, IntResMsg};
 use crate::usb::MyUsbClass;
+use core::str;
 
-pub struct EchoInterface {
+pub struct Interface {
     class: MyUsbClass,
 }
 
-impl EchoInterface {
+impl Interface {
     pub fn new(class: MyUsbClass) -> Self {
         Self { class }
-    }
-
-    pub async fn run(&mut self) -> ! {
-        let mut buf = [0; 64];
-        loop {
-            // Wait for the USB cable to be plugged in and port opened
-            self.class.wait_connection().await;
-            info!("Connected");
-
-            loop {
-                match self.class.read_packet(&mut buf).await {
-                    Ok(n) => {
-                        let data = &buf[..n];
-                        if self.class.write_packet(data).await.is_err() { break; }
-                        if self.class.write_packet(b" - echoed\r\n").await.is_err() { break; }
-                    }
-                    Err(_) => break, // Connection lost
-                }
-            }
-            info!("Disconnected");
-        }
     }
 }
 
 #[embassy_executor::task]
-pub async fn interface_task(class: MyUsbClass) {
-    let mut echo = EchoInterface::new(class);
-    echo.run().await;
+pub async fn interface_task(
+    channel_req: &'static Channel<CriticalSectionRawMutex, IntReqMsg, 8>,
+    channel_res: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
+    mut interface: Interface,
+) {
+    loop {
+        interface.class.wait_connection().await;
+        info!("USB Connected");
+        
+        loop {
+            if interface.class.dtr() {
+                break;
+            }
+            embassy_time::Timer::after_millis(50).await;
+        }
+
+        info!("Terminal ready");
+        let _ = interface.class.write_packet(b"Terminal Ready. Type a command.\r\n").await;
+
+        loop {
+            let mut rx_buf = [0u8; 64];
+
+            match interface.class.read_packet(&mut rx_buf).await {
+                Ok(n) => {
+
+                    let line = str::from_utf8(&rx_buf[..n]).unwrap_or("").trim();
+                    if line.is_empty() { continue; }
+
+                    match line {
+                        "ping" => {
+                            let _ = interface.class.write_packet(b"pong\r\n").await;
+                        }
+                        _ => {
+                            let _ = interface.class.write_packet(b"Unknown command\r\n").await;
+                        }
+                    }
+                }
+                Err(_) => break, 
+            }
+        }
+        info!("USB Disconnected");
+    }
 }

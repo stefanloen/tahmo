@@ -83,3 +83,11 @@ pub enum MonResMsg{
         fraction: u8
     }
 }
+
+pub enum IntReqMsg{
+
+}
+
+pub enum IntResMsg{
+    
+}

@@ -53,9 +53,10 @@ use crate::battery::Battery;
 use crate::comms::task_comms;
 use crate::compute::task_compute;
 use crate::control::task_control;
+use crate::interface::Interface;
 use crate::usb::usb_task;
 use crate::interface::interface_task;
-use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg};
+use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
 use crate::gnss::GNSSSensor;
 use crate::measure::task_measure;
 use crate::monitor::task_monitor;
@@ -66,10 +67,13 @@ static MEASURE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, MeasureReqMsg, 
 static COMPUTE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, ComputeReqMsg, 8> = Channel::new();
 static COMM_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, CommReqMsg, 8> = Channel::new();
 static MONITOR_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, MonReqMsg, 8> = Channel::new();
+static INTERFACE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, IntReqMsg, 8> = Channel::new();
 static MEASURE_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, MeasureResMsg, 8> = Channel::new();
 static COMPUTE_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, ComputeResMsg, 8> = Channel::new();
 static COMM_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, CommResMsg, 8> = Channel::new();
 static MONITOR_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, MonResMsg, 8> = Channel::new();
+static INTERFACE_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, IntResMsg, 8> = Channel::new();
+
 
 pub const GNSS_PRE_UART_BAUDRATE: u32 = 9_600;
 pub const GNSS_POST_UART_BAUDRATE: u32 = 115_200;
@@ -128,6 +132,7 @@ async fn main(spawner: Spawner) {
     // USB
     let usb_driver = Driver::new(p.USB, Irqs);
     let usb_context = usb::UsbContext::new(usb_driver);
+    let interface = Interface::new(usb_context.class);
 
     // Battery peripherals
     let pin_bat_stat1 = Input::new(p.PIN_22, Pull::None);
@@ -216,7 +221,10 @@ async fn main(spawner: Spawner) {
         error!("Failed to spawn USB task: {}", result.unwrap_err());
     }
 
-    let result = spawner.spawn(interface_task(usb_context.class));
+    let result = spawner.spawn(interface_task(
+        &INTERFACE_REQUEST_CHANNEL,
+        &INTERFACE_RESPONSE_CHANNEL,
+        interface));
 
     if result.is_err() {
         error!("Failed to spawn Interface task: {}", result.unwrap_err());
