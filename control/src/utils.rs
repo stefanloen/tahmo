@@ -1,6 +1,12 @@
 use heapless::String;
 use core::fmt::Write;
 
+pub fn uid_to_str(id: u64) -> String<16> {
+    let mut string = String::<16>::new();
+    write!(string, "{:016X}", id).ok();
+    string
+}
+
 pub fn time_str_to_seconds(time_str: &str) -> Option<u32> {
     let parts: heapless::Vec<&str, 3> = time_str.split(':').collect::<heapless::Vec<_, 3>>();
     if parts.len() != 3 {
