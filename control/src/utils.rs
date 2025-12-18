@@ -1,10 +1,15 @@
 use heapless::String;
 use core::fmt::Write;
 
-pub fn uid_to_str(id: u64) -> String<16> {
-    let mut string = String::<16>::new();
-    write!(string, "{:016X}", id).ok();
-    string
+pub fn uid_to_bytes(id: u64) -> [u8; 16] {
+    let mut buf = [0u8; 16];
+    // Use a small local string just to do the formatting
+    let mut s = heapless::String::<16>::new();
+    core::fmt::write(&mut s, format_args!("{:016X}", id)).ok();
+    
+    // Copy the bytes into our fixed array
+    buf.copy_from_slice(s.as_bytes());
+    buf
 }
 
 pub fn time_str_to_seconds(time_str: &str) -> Option<u32> {
