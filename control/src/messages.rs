@@ -85,9 +85,12 @@ pub enum MonResMsg{
 }
 
 pub enum IntReqMsg{
-
+    BatVoltSuccess{
+        voltage: u32
+    },
+    BatVoltFail
 }
 
 pub enum IntResMsg{
-    
+    GetBatVolt
 }

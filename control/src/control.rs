@@ -4,10 +4,10 @@ use defmt::{error, info};
 use embassy_time::Timer;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use heapless::Vec;
-use embassy_futures::select::{select5, Either5};
+use embassy_futures::select::{Either6, select6};
 
 use crate::realtime::RealTime;
-use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg};
+use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
 use crate::storage::SectorStorage;
 use crate::types::{Config, Sector, SectorList, SectorState, MAX_SECTORS};
 use crate::{scheduler::*, StorageType};
@@ -25,10 +25,12 @@ pub async fn task_control(
     compute_request_channel: &'static Channel<CriticalSectionRawMutex, ComputeReqMsg, 8>,
     comm_request_channel: &'static Channel<CriticalSectionRawMutex, CommReqMsg, 8>,
     mon_request_channel: &'static Channel<CriticalSectionRawMutex, MonReqMsg, 8>,
+    int_request_channel: &'static Channel<CriticalSectionRawMutex, IntReqMsg, 8>,
     measure_response_channel: &'static Channel<CriticalSectionRawMutex, MeasureResMsg, 8>,
     compute_response_channel: &'static Channel<CriticalSectionRawMutex, ComputeResMsg, 8>,
     comm_response_channel: &'static Channel<CriticalSectionRawMutex, CommResMsg, 8>,
     mon_response_channel: &'static Channel<CriticalSectionRawMutex, MonResMsg, 8>,
+    int_response_channel: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     storage: &'static StorageType,
 ) {
     let config = Config::default();
@@ -145,15 +147,16 @@ pub async fn task_control(
 
         info!("[cont] waiting for events or next timer");
 
-        let result = select5(
+        let result = select6(
             &mut timer,
             measure_response_channel.receive(),
             compute_response_channel.receive(),
             comm_response_channel.receive(),
-            mon_response_channel.receive()
+            mon_response_channel.receive(),
+            int_response_channel.receive()
         ).await;
         match result {
-            Either5::First(_) => {
+            Either6::First(_) => {
                 info!("[cont] next sector timer expired, getting next sector");
                 let sector_awaiting_idx = sectors.get_idx_for_state(SectorState::AWAITING);
                 if let Some(idx) = sector_awaiting_idx {
@@ -169,7 +172,7 @@ pub async fn task_control(
                     info!("No sector in AWAITING state when timer expired");
                 }
             }
-            Either5::Second(measure_res_msg) => {
+            Either6::Second(measure_res_msg) => {
                 match measure_res_msg {
                     MeasureResMsg::RefTimeSuccess { deviation, date} => {
                         info!("[cont] received reference time from GNSS");
@@ -207,7 +210,7 @@ pub async fn task_control(
                     }
                 }
             }
-            Either5::Third(compute_res_msg) => {
+            Either6::Third(compute_res_msg) => {
                 match compute_res_msg {
                     ComputeResMsg::Success { sector_uid } => {
                         info!("[cont] received computation success from core 1");
@@ -224,7 +227,7 @@ pub async fn task_control(
                     }
                 }
             }
-            Either5::Fourth(comm_res_msg) => {
+            Either6::Fourth(comm_res_msg) => {
                 match comm_res_msg {
                     CommResMsg::Success { sector_uids } => {
                         info!("[cont] received communication success from core 1");
@@ -245,13 +248,30 @@ pub async fn task_control(
                     }
                 }
             }
-            Either5::Fifth(mon_res_msg) => {
+            Either6::Fifth(mon_res_msg) => {
                 match mon_res_msg {
                     MonResMsg::BatVoltSuccess { voltage } => battery_mv = Some(voltage),
                     MonResMsg::BatVoltFail => battery_mv = None,
                     MonResMsg::TempSuccess { temp_c } => chip_c = Some(temp_c),
                     MonResMsg::TempFail => chip_c = None,
                     MonResMsg::ChargeStateFraction { fraction } => charge_state_fraction = fraction,
+                }
+            }
+            Either6::Sixth(int_res_msg) => {
+                match int_res_msg {
+                    IntResMsg::GetBatVolt => {
+                        // Immediately respond with battery voltage
+                        // This will need more complex state machine for responses from interface that
+                        // need drastic change of control state
+                        match battery_mv {
+                            Some(voltage) => {
+                                int_request_channel.send(IntReqMsg::BatVoltSuccess { voltage }).await;
+                            },
+                            _ => {
+                                int_request_channel.send(IntReqMsg::BatVoltFail).await;
+                            }
+                        }
+                    }
                 }
             }
         }
