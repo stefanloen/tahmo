@@ -36,6 +36,7 @@ enum InterfaceState {
     Disconnected,
     Idle,
     Batvolt,
+    GetConst,
 }
 
 pub struct Interface {
@@ -106,15 +107,15 @@ pub async fn interface_task(
 
                 match interface.state {
                     InterfaceState::Idle => {
-
-
                         match command {
                             "help" | "?" => {
                                 usb_writeln!(writer,
 "The following commands can be used
 help | ? - Gives a list of commands
 status - Give a full status update
-batvolt - Get battery voltage").await.ok();
+batvolt - Get battery voltage
+getconst - Get the constellation state
+").await.ok();
                             }
                             "status" => {
                                 usb_writeln!(writer, "Status has not yet been implemented").await.ok();
@@ -123,6 +124,11 @@ batvolt - Get battery voltage").await.ok();
                                 channel_res.send(IntResMsg::GetBatVolt).await;
                                 interface.state = InterfaceState::Batvolt;
                             }
+                            "getconst" => {
+                                usb_writeln!(writer, "Getting constellation state. Please wait...").await.ok();
+                                channel_res.send(IntResMsg::GetConstellationState).await;
+                                interface.state = InterfaceState::GetConst;
+                            }
                             _ => {
                                 usb_writeln!(writer, "Unknown command, for a list of commands, use 'help' or '?'").await.ok();
                             }
@@ -130,6 +136,10 @@ batvolt - Get battery voltage").await.ok();
                     },
                     InterfaceState::Batvolt => {
                         // User input while getting batvolt, abort 
+                        interface.state = InterfaceState::Idle
+                    }
+                    InterfaceState::GetConst => {
+                        // TODO: Cancel properly by sending message to control to cancel
                         interface.state = InterfaceState::Idle
                     }
                     InterfaceState::Disconnected => {
@@ -147,12 +157,35 @@ batvolt - Get battery voltage").await.ok();
                         match request {
                             IntReqMsg::BatVoltSuccess { voltage } => {
                                 usb_writeln!(writer, "Battery millivolts: {}", {voltage}).await.ok();
+                                interface.state = InterfaceState::Idle;
                             },
                             IntReqMsg::BatVoltFail => {
                                 usb_writeln!(writer, "Could not get battery voltage").await.ok();
+                                interface.state = InterfaceState::Idle;
+                            },
+                            _ => {
+                                // Ignore other requests
+                            }
+
+                        };
+                    }
+                    InterfaceState::GetConst => {
+                        match request {
+                            IntReqMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible } => {
+                                usb_writeln!(writer, "Signal bars: {}", signal_bars_max).await.ok();
+                                usb_writeln!(writer, "Signal level: {}", signal_level_max).await.ok();
+                                usb_writeln!(writer, "Constellation visible: {}", constellation_visible).await.ok();
+                                interface.state = InterfaceState::Idle;
+                            }
+                            IntReqMsg::ConstellationStateFail { error } => {
+                                usb_writeln!(writer, "Getting constellation failed").await.ok();
+                                interface.state = InterfaceState::Idle;
+                            }
+
+                            _ => {
+                                // Ignore other requests
                             }
                         };
-                        interface.state = InterfaceState::Idle;
                     }
                 }
             }

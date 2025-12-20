@@ -246,6 +246,12 @@ pub async fn task_control(
                         }
                         sectors.set_changed(true);
                     }
+                    CommResMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible } => {
+                        int_request_channel.send(IntReqMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible }).await;
+                    },
+                    CommResMsg::ConstellationStateFail { error } => {
+                        int_request_channel.send(IntReqMsg::ConstellationStateFail { error } ).await;
+                    }
                 }
             }
             Either6::Fifth(mon_res_msg) => {
@@ -271,6 +277,11 @@ pub async fn task_control(
                                 int_request_channel.send(IntReqMsg::BatVoltFail).await;
                             }
                         }
+                    }
+                    IntResMsg::GetConstellationState => {
+                        // Request constellation state from the comms task
+                        // TODO: Check if comms is actually available
+                        comm_request_channel.send(CommReqMsg::GetConstellationState).await;
                     }
                 }
             }

@@ -1,4 +1,7 @@
 
+use core::cmp::max;
+use core::{i8, u8};
+
 use defmt::{info, Format};
 use embassy_futures::select::{select, Either};
 use embassy_time::{Instant, Timer};
@@ -115,31 +118,47 @@ pub async fn task_comms(
             Timer::after_secs(u32::MAX as u64)
         ).await;
         match select {
-            Either::First(CommReqMsg::Send { sectors, config, battery_mv, temp_c, charge_state_fraction  }) => {
-                let uids: heapless::Vec<u32, MAX_SECTORS> = sectors.iter()
-                    .map(|s| s.get_uid())
-                    .take(MAX_SECTORS)
-                    .collect();
-                info!("[comm] starting communication for sectors {:?}", uids.as_slice());
-                let result = run_comms(
-                    &mut rockblock, 
-                    storage, 
-                    sectors, 
-                    config.num_send_measurements, 
-                    battery_mv, 
-                    temp_c,
-                    charge_state_fraction
-                ).await;
-                if result.is_err() {
-                    info!("[comm] communication failed");
-                    channel_res.send(CommResMsg::Fail { 
-                        sector_uids: uids,
-                        error: result.unwrap_err() 
-                    }).await;
-                } else {
-                    channel_res.send(CommResMsg::Success { 
-                        sector_uids: uids,
-                    }).await;
+            Either::First(request) => {
+                match request {
+                    CommReqMsg::Send { sectors, config, battery_mv, temp_c, charge_state_fraction  } => {
+                        let uids: heapless::Vec<u32, MAX_SECTORS> = sectors.iter()
+                            .map(|s| s.get_uid())
+                            .take(MAX_SECTORS)
+                            .collect();
+                        info!("[comm] starting communication for sectors {:?}", uids.as_slice());
+                        let result = run_comms(
+                            &mut rockblock, 
+                            storage, 
+                            sectors, 
+                            config.num_send_measurements, 
+                            battery_mv, 
+                            temp_c,
+                            charge_state_fraction
+                        ).await;
+                        if result.is_err() {
+                            info!("[comm] communication failed");
+                            channel_res.send(CommResMsg::Fail { 
+                                sector_uids: uids,
+                                error: result.unwrap_err() 
+                            }).await;
+                        } else {
+                            channel_res.send(CommResMsg::Success { 
+                                sector_uids: uids,
+                            }).await;
+                        }
+                    },
+                    CommReqMsg::GetConstellationState => {
+                        info!("[comm] Getting constellation state");
+                        let result = get_constellation_state(&mut rockblock).await;
+                        if result.is_err() {
+                            info!("]comm] Getting constellation failed");
+                            channel_res.send(CommResMsg::ConstellationStateFail { error: result.unwrap_err() }).await;
+                        } else {
+                            info!("]comm] Getting constellation succes");
+                            let (signal_bars_max, signal_level_max, constellation_visible) = result.unwrap();
+                            channel_res.send(CommResMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible}).await;
+                        }
+                    }
                 }
             }
             Either::Second(_) => {}
@@ -275,6 +294,54 @@ async fn run_comms(
         Err(CommsError::RockBlockSendFail)
     } else {
         Ok(())
+    }
+}
+
+async fn get_constellation_state(rockblock: &mut RockBlock9704) -> Result<(u8, i8, bool), CommsError> {
+    info!("[comm] Turning on RockBlock");
+    rockblock.power_on().await;
+    if rockblock.status != crate::rockblock::RockBlock9704Status::Unchecked {
+        info!("[comm] RockBlock not ready to be checked, aborting comms and powering off");
+        rockblock.power_off().await;
+        info!("[comm] RockBlock powered off");
+        return Err(CommsError::RockBlockNoPower);
+    }
+    info!("[comm] Checking RockBlock status");
+    rockblock.check_status().await;
+    if rockblock.status != crate::rockblock::RockBlock9704Status::Ready {
+        info!("[comm] RockBlock not ready, aborting comms");
+        info!("[comm] Turning off RockBlock");
+        rockblock.power_off().await;
+        info!("[comm] RockBlock powered off");
+        return Err(CommsError::RockBlockNotReady);
+    };
+
+    info!("[comm] Checking constellation");
+    let mut signal_bars_max: u8 = u8::MIN;
+    let mut signal_level_max: i8 = i8::MIN;
+    let mut constellation_visible: bool = false;
+
+    let mut is_error = false;
+    for _ in 0..5 {
+        if let Some(result) = rockblock.get_constellation_state().await {
+            info!("[comm] Constellation state: {} {} {}", result.signal_bars, result.signal_level, result.constellation_visible);
+            signal_bars_max = max(signal_bars_max, result.signal_bars);
+            signal_level_max = max(signal_level_max, result.signal_level.unwrap_or(i8::MIN));
+            constellation_visible |= result.constellation_visible;
+        } else {
+            is_error = true;
+            info!("[comm] Failed to get constellation state");
+        }
+        Timer::after_secs(3).await;
+    }
+    info!("[comm] Turning off RockBlock");
+    rockblock.power_off().await;
+    info!("[comm] RockBlock powered off");
+
+    if is_error {
+        Err(CommsError::RockBlockSendFail)
+    } else {
+        Ok((signal_bars_max, signal_level_max, constellation_visible))
     }
 }
 
