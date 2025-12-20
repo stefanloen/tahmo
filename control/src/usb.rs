@@ -4,6 +4,7 @@ use embassy_rp::usb::Driver;
 use embassy_usb::{Builder, Config, UsbDevice};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use static_cell::StaticCell;
+use heapless::String;
 
 use crate::utils::uid_to_bytes;
 
@@ -56,6 +57,48 @@ impl UsbContext {
         let device = builder.build();
 
         Self { class, device }
+    }
+}
+
+#[macro_export]
+macro_rules! usb_write {
+    ($writer:expr, $($arg:tt)*) => {
+        $writer.write_fmt(format_args!($($arg)*))
+    };
+}
+
+#[macro_export]
+macro_rules! usb_writeln {
+    ($writer:expr, $($arg:tt)*) => {
+        $writer.writeln_fmt(format_args!($($arg)*))
+    };
+}
+
+pub struct UsbWriter<'a, D: embassy_usb::driver::Driver<'static>> {
+    sender: &'a mut embassy_usb::class::cdc_acm::Sender<'static, D>,
+}
+
+impl<'a, D: embassy_usb::driver::Driver<'static>> UsbWriter<'a, D> {
+    pub fn new(sender: &'a mut embassy_usb::class::cdc_acm::Sender<'static, D>) -> Self {
+        Self { sender }
+    }
+
+    pub async fn write_fmt(&mut self, args: core::fmt::Arguments<'_>) -> Result<(), ()> {
+        let mut buf: String<512> = String::new();
+        if core::fmt::write(&mut buf, args).is_ok() {
+            for chunk in buf.as_bytes().chunks(64) {
+                self.sender.write_packet(chunk).await.map_err(|_| ())?;
+            }
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    pub async fn writeln_fmt(&mut self, args: core::fmt::Arguments<'_>) -> Result<(), ()> {
+        self.write_fmt(args).await?;
+        self.sender.write_packet(b"\r\n").await.map_err(|_| ())?;
+        Ok(())
     }
 }
 

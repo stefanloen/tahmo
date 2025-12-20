@@ -1,8 +1,12 @@
 use defmt::info;
+use embassy_futures::select::{Either, select};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
-use crate::messages::{IntReqMsg, IntResMsg};
-use crate::usb::MyUsbClass;
+use embassy_time::Timer;
 use core::str;
+
+use crate::messages::{IntReqMsg, IntResMsg};
+use crate::usb::{MyUsbClass, UsbWriter};
+use crate::{usb_write, usb_writeln};
 
 pub struct Interface {
     class: MyUsbClass,
@@ -20,24 +24,36 @@ pub async fn interface_task(
     channel_res: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     mut interface: Interface,
 ) {
-    loop {
-        interface.class.wait_connection().await;
-        info!("USB Connected");
-        
-        loop {
-            if interface.class.dtr() {
-                break;
-            }
-            embassy_time::Timer::after_millis(50).await;
-        }
+    let (mut sender, 
+        mut receiver, 
+        mut control) 
+        = interface.class.split_with_control();
 
-        info!("Terminal ready");
-        let _ = interface.class.write_packet(b"Terminal Ready. Type a command.\r\n").await;
+    let mut dtr = false;
+    let mut writer = UsbWriter::new(&mut sender);
 
-        loop {
-            let mut rx_buf = [0u8; 64];
+    loop {  
+        let mut rx_buf = [0u8; 64];
 
-            match interface.class.read_packet(&mut rx_buf).await {
+        let result = select(
+            control.control_changed(), 
+            receiver.read_packet(&mut rx_buf)
+        ).await;
+
+        match result {
+            Either::First(_) => {
+                if receiver.dtr() && !dtr {
+                    dtr = receiver.dtr();
+                    Timer::after_millis(50).await;
+                    info!("[intf] Terminal ready");
+                    usb_write!(writer, "Terminal Ready. Type a command.").await.ok();                
+                } else if !receiver.dtr() && dtr{
+                    dtr = receiver.dtr();
+                    info!("[intf] Terminal Disconnected");
+                }
+            },
+            Either::Second(res) => {
+                match res {
                 Ok(n) => {
 
                     let line = str::from_utf8(&rx_buf[..n]).unwrap_or("").trim();
@@ -45,16 +61,16 @@ pub async fn interface_task(
 
                     match line {
                         "ping" => {
-                            let _ = interface.class.write_packet(b"pong\r\n").await;
+                            usb_writeln!(writer, "Pong").await.ok();
                         }
                         _ => {
-                            let _ = interface.class.write_packet(b"Unknown command\r\n").await;
+                            usb_writeln!(writer, "Unknown command.").await.ok();
                         }
                     }
                 }
                 Err(_) => break, 
+                }
             }
         }
-        info!("USB Disconnected");
     }
 }
