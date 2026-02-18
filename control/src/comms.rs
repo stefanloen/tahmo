@@ -151,10 +151,10 @@ pub async fn task_comms(
                         info!("[comm] Getting constellation state");
                         let result = get_constellation_state(&mut rockblock).await;
                         if result.is_err() {
-                            info!("]comm] Getting constellation failed");
+                            info!("[comm] Getting constellation failed");
                             channel_res.send(CommResMsg::ConstellationStateFail { error: result.unwrap_err() }).await;
                         } else {
-                            info!("]comm] Getting constellation succes");
+                            info!("[comm] Getting constellation success");
                             let (signal_bars_max, signal_level_max, constellation_visible) = result.unwrap();
                             channel_res.send(CommResMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible}).await;
                         }

@@ -33,7 +33,7 @@ pub async fn task_control(
     int_response_channel: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     storage: &'static StorageType,
 ) {
-    let config = Config::default(); // TODO, load from flash
+    let mut config = Config::default(); // TODO, load from flash
     info!("[cont] starting");
     info!(
         "[cont] configuration: [{}] measurements ({})", 
@@ -286,9 +286,23 @@ pub async fn task_control(
                     IntResMsg::GetConfig => {
                         int_request_channel.send(IntReqMsg::GiveConfig {config: config.clone() }).await;
                     }
-                    IntResMsg::SetConfig{ config} => {
-                        // TODO set the config
-                        info!("[cont] Updating config to {}", config.get_mid_times_as_str().as_str());
+                    IntResMsg::SetConfig{ config: new_config} => {
+                        //TODO abort measurements, computing and communication and empty sectorlist
+                        let safe_to_change_config = sectors.iter().all(|s| s.state == SectorState::AWAITING); 
+
+                        if safe_to_change_config{
+                            config = new_config; //TODO store in flash
+                            sectors.clear();
+                            sectors.set_changed(true);
+                            realtime_status = RealtimeStatus::NotAvailable;
+
+                            sleep_until_time = None;
+                            sleep_until_date = None;
+
+                            info!("[cont] config is updated")
+                        } else {
+                            info!("[cont] cannot update config")
+                        }
                     }
                 }
             }

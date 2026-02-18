@@ -185,6 +185,10 @@ impl SectorList {
         self.sectors.iter()
     }
 
+    pub fn clear(&mut self) {
+        self.sectors.clear()
+    }
+
     pub fn from_bytes(data: &[u8], update: bool) -> Option<Self> {
         let mut sectors = Vec::<Sector, MAX_SECTORS>::new();
         if &data[0..4] != b"SECT" {
