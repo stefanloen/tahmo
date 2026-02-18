@@ -33,7 +33,7 @@ pub async fn task_control(
     int_response_channel: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     storage: &'static StorageType,
 ) {
-    let config = Config::default();
+    let config = Config::default(); // TODO, load from flash
     info!("[cont] starting");
     info!(
         "[cont] configuration: [{}] measurements ({})", 
@@ -282,6 +282,13 @@ pub async fn task_control(
                         // Request constellation state from the comms task
                         // TODO: Check if comms is actually available
                         comm_request_channel.send(CommReqMsg::GetConstellationState).await;
+                    }
+                    IntResMsg::GetConfig => {
+                        int_request_channel.send(IntReqMsg::GiveConfig {config: config.clone() }).await;
+                    }
+                    IntResMsg::SetConfig{ config} => {
+                        // TODO set the config
+                        info!("[cont] Updating config to {}", config.get_mid_times_as_str().as_str());
                     }
                 }
             }

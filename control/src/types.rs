@@ -3,6 +3,9 @@ use heapless::{Vec, String};
 
 use crate::{realtime::RealTime, utils};
 
+// CONSTANTS
+pub const SECONDS_PER_DAY: u32 = 86400;
+
 // Control
 pub const MAX_SECTORS: usize = 96;
 
@@ -95,20 +98,30 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         let mut mid_times = Vec::<u32, MAX_MIDPOINTS>::new();
-        // mid_times.push(utils::time_str_to_seconds("11:20:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("11:50:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("12:20:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("13:50:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("14:20:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("14:50:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("02:00:00").unwrap()).unwrap();
+        mid_times.push(utils::time_str_to_seconds("00:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("01:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("02:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("03:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("04:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("05:00:00").unwrap()).unwrap();
         mid_times.push(utils::time_str_to_seconds("06:00:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("10:00:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("14:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("07:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("08:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("09:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("10:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("11:00:00").unwrap()).unwrap();
+        mid_times.push(utils::time_str_to_seconds("12:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("13:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("14:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("15:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("16:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("17:00:00").unwrap()).unwrap();
         mid_times.push(utils::time_str_to_seconds("18:00:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("22:00:00").unwrap()).unwrap();
-
-
+        // mid_times.push(utils::time_str_to_seconds("19:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("20:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("21:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("22:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("23:00:00").unwrap()).unwrap();
         
         Self {
             pre_min_elevation: 5,
@@ -131,7 +144,7 @@ impl Default for Config {
 
             sector_mid_times: mid_times,
 
-            bins_per_sector: 6,
+            bins_per_sector: 1,
             seconds_per_bin: 240*5,
 
             num_send_measurements: 3,
@@ -414,7 +427,7 @@ impl Sector {
     }
 
     pub fn get_end_time(&self) -> u32 {
-        (self.start_time + self.n_bins * self.seconds_per_bin) % 86400
+        (self.start_time + self.n_bins * self.seconds_per_bin) % SECONDS_PER_DAY
     }
 
     pub fn get_lat(&self) -> f32 {
@@ -437,7 +450,7 @@ impl Sector {
         let dt = if time >= self.start_time {
             time - self.start_time
         } else {
-            86400 + time - self.start_time
+            SECONDS_PER_DAY + time - self.start_time
         };
         let bin_id = self.start_bin_index + dt / self.seconds_per_bin;
 

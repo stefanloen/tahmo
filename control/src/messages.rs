@@ -105,10 +105,17 @@ pub enum IntReqMsg{
     },
     ConstellationStateFail {
         error: CommsError
+    },
+    GiveConfig {
+        config: Config
     }
 }
 
 pub enum IntResMsg{
     GetBatVolt,
-    GetConstellationState
+    GetConstellationState,
+    GetConfig,
+    SetConfig {
+        config: Config
+    },
 }
