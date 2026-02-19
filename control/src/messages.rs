@@ -108,6 +108,9 @@ pub enum IntReqMsg{
     },
     GiveConfig {
         config: Config
+    },
+    GiveState {
+        str: heapless::String<2048>
     }
 }
 
@@ -118,4 +121,6 @@ pub enum IntResMsg{
     SetConfig {
         config: Config
     },
+    GetState
 }
+

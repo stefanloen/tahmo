@@ -41,6 +41,7 @@ enum InterfaceState {
     Batvolt,
     GetConst,
     GetConfig,
+    GetState,
 
     SetElevation {
         min: u32,
@@ -145,7 +146,8 @@ setconfig - Set configuration
 ").await.ok();
                             }
                             "status" => {
-                                usb_writeln!(writer, "Status has not yet been implemented").await.ok();
+                                channel_res.send(IntResMsg::GetState).await;
+                                interface.state = InterfaceState::GetState;
                             }
                             "batvolt" => {
                                 channel_res.send(IntResMsg::GetBatVolt).await;
@@ -415,6 +417,21 @@ measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00
                                 // Ignore other requests
                             }
                         }
+                    },
+                    InterfaceState::GetState {} => {
+                        match request {
+                            IntReqMsg::GiveState { str } => {
+                                for line in str.lines() {
+                                    usb_writeln!(writer, "{}", line).await.ok();
+                                }
+                            }
+
+                            _ => {
+                                    // Ignore other requests
+                            }
+                        }
+                    
+
                     }
                 }
             }

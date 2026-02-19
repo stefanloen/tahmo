@@ -5,6 +5,7 @@ use embassy_time::Timer;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use heapless::Vec;
 use embassy_futures::select::{Either6, select6};
+use core::fmt::Write;
 
 use crate::realtime::RealTime;
 use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
@@ -144,6 +145,8 @@ pub async fn task_control(
         } else {
             Timer::after_secs(u32::MAX as u64)
         };
+
+        sectors.print_debug();
 
         info!("[cont] waiting for events or next timer");
 
@@ -303,6 +306,16 @@ pub async fn task_control(
                         } else {
                             info!("[cont] cannot update config")
                         }
+                    }
+                    IntResMsg::GetState => {
+                        let mut s = heapless::String::<2048>::new();
+                        writeln!(s, "--- SectorList Report ---").ok();
+                        for part in sectors.iter() {
+                            writeln!(s, "{:?}", part).ok(); 
+                        }
+                        writeln!(s, "--- End of Report ---").ok();
+                        
+                        int_request_channel.send(IntReqMsg::GiveState { str: s }).await;
                     }
                 }
             }

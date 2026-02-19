@@ -15,6 +15,12 @@ $ cd control
 $ cargo run --release
 ```
 
+Creating an uf2 file:
+```bash
+$ picotool uf2 convert .\target\thumbv8m.main-none-eabihf\release\control -t elf control.uf2
+```
+
+
 ## analysis
 Provides tools for analysing GNSS date (similar to what is in the firmware), and for seeing the results from a firmware dump.
 

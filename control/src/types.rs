@@ -131,8 +131,8 @@ impl Default for Config {
 
             post_min_elevation: 5,
             post_max_elevation: 30,
-            post_min_azimuth: 200,
-            post_max_azimuth: 290,
+            post_min_azimuth: 120,
+            post_max_azimuth: 240,
 
             min_relative_height: 0.5,
             max_relative_height: 15.0,
@@ -144,7 +144,7 @@ impl Default for Config {
 
             sector_mid_times: mid_times,
 
-            bins_per_sector: 1,
+            bins_per_sector: 3,
             seconds_per_bin: 240*5,
 
             num_send_measurements: 3,
@@ -292,6 +292,14 @@ impl SectorList {
         }
         indices
     }
+
+    pub fn print_debug(&self) {
+        info!("--- SectorList Report ---");
+        for s in self.sectors.iter() {
+            info!("{:?}", s); 
+        }
+        info!("--- End of Report ---");
+    }
 }
 
 # [derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
@@ -308,7 +316,7 @@ pub enum SectorState {
 
 pub const SECTOR_SIZE: usize = 41;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Format)]
 pub struct Sector {
     uid: u32,
 
