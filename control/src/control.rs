@@ -9,7 +9,7 @@ use core::fmt::Write;
 
 use crate::realtime::RealTime;
 use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
-use crate::storage::SectorStorage;
+use crate::storage::{ConfigStorage, SectorStorage};
 use crate::types::{Config, Sector, SectorList, SectorState, MAX_SECTORS};
 use crate::{scheduler::*, StorageType};
 
@@ -34,8 +34,23 @@ pub async fn task_control(
     int_response_channel: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     storage: &'static StorageType,
 ) {
-    let mut config = Config::default(); // TODO, load from flash
     info!("[cont] starting");
+    let mut config: Config;
+    let config_storage = ConfigStorage::new();
+    {
+        let mut storage_lock = storage.lock().await;
+        let storage = storage_lock.as_mut().expect("Storage should be initialized");
+        let result = config_storage.load(storage);
+        if let Ok(loaded_config) = result {
+            config = loaded_config;
+
+            info!("[cont] loaded config from storage");
+        } else {
+            config = Config::default();
+            info!("[cont] no stored config found ({}), creating default", result.err().unwrap());
+        }
+    }
+
     info!(
         "[cont] configuration: [{}] measurements ({})", 
         config.get_mid_times_as_str().as_str(),
@@ -294,7 +309,10 @@ pub async fn task_control(
                         let safe_to_change_config = sectors.iter().all(|s| s.state == SectorState::AWAITING); 
 
                         if safe_to_change_config{
-                            config = new_config; //TODO store in flash
+                            config = new_config;
+
+                            save_config(storage, &mut config).await;
+
                             sectors.clear();
                             sectors.set_changed(true);
                             realtime_status = RealtimeStatus::NotAvailable;
@@ -338,4 +356,12 @@ pub async fn save_sectors(storage: &'static StorageType, sectors: &mut SectorLis
     let storage = storage_lock.as_mut().expect("Storage should be initialized");
     let sector_storage = SectorStorage::new();
     sector_storage.save(storage, sectors).expect("Should save sectors");
+}
+
+pub async fn save_config(storage: &'static StorageType, config: &mut Config) {
+    info!("[cont] saving config to storage");
+    let mut storage_lock = storage.lock().await;
+    let storage = storage_lock.as_mut().expect("Storage should be initialized");
+    let config_storage = ConfigStorage::new();
+    config_storage.save(storage, config).expect("Should save config");
 }
