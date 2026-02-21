@@ -120,12 +120,12 @@ async fn main(spawner: Spawner) {
     wdg.start(Duration::from_secs(16));
     
     // Battery peripherals
-    let pin_bat_stat1 = Input::new(p.PIN_22, Pull::None);
-    let pin_bat_stat2 = Input::new(p.PIN_21, Pull::None);
-    let pin_bat_CE = Output::new(p.PIN_20, Level::Low);
+    let pin_bat_stat1 = Input::new(p.PIN_10, Pull::None);
+    let pin_bat_stat2 = Input::new(p.PIN_8, Pull::None);
+    let pin_bat_CE = Output::new(p.PIN_6, Level::Low);
 
     let adc: adc::Adc<'_, adc::Async> = adc::Adc::new(p.ADC, Irqs, adc::Config::default());
-    let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_26, Pull::None);
+    let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_28, Pull::None);
 
     //Temp sensor
     let pin_temp = adc::Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
@@ -144,17 +144,17 @@ async fn main(spawner: Spawner) {
     // GNSS peripherals
     let mut gnss_uart_config = uart::Config::default();
     gnss_uart_config.baudrate = GNSS_PRE_UART_BAUDRATE;
-    let gnss_uart = uart::Uart::new(p.UART0, p.PIN_16, p.PIN_17, Irqs, p.DMA_CH0, p.DMA_CH1, gnss_uart_config);
+    let gnss_uart = uart::Uart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, p.DMA_CH0, p.DMA_CH1, gnss_uart_config);
     let pin_gnss_power = Output::new(p.PIN_18, Level::Low);
     let mut gnss_sensor = GNSSSensor::new(gnss_uart, pin_gnss_power);
 
     // Rockblock pheripherals
     let mut config_uart_rockblock = uart::Config::default();
     config_uart_rockblock.baudrate = ROCKBLOCK_UART_BAUDRATE;
-    let uart_rockblock = uart::Uart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, p.DMA_CH2, p.DMA_CH3, config_uart_rockblock);
-    let pin_rockblock_power = Output::new(p.PIN_8, Level::Low);
-    let pin_iridium_enable = Output::new(p.PIN_7, Level::Low);
-    let pin_iridium_status = gpio::Input::new(p.PIN_6, gpio::Pull::None);
+let uart_rockblock = uart::Uart::new(p.UART0, p.PIN_0, p.PIN_1, Irqs, p.DMA_CH2, p.DMA_CH3, config_uart_rockblock);
+    let pin_rockblock_power = Output::new(p.PIN_20, Level::Low);
+    let pin_iridium_enable = Output::new(p.PIN_22, Level::Low);
+    let pin_iridium_status = gpio::Input::new(p.PIN_26, gpio::Pull::None);
     let mut rockblock = RockBlock9704::new(
         uart_rockblock,
         pin_rockblock_power,
