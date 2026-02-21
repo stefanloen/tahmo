@@ -3,135 +3,186 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hex Packet Decoder</title>
+    <title>TAHMO WLM Parser</title>
     <style>
-        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; }
-        body { font-family: system-ui, sans-serif; background: var(--bg); color: #1e293b; padding: 2rem; }
-        .container { max-width: 800px; margin: 0 auto; }
-        textarea { width: 100%; height: 80px; padding: 10px; border: 2px solid #cbd5e1; border-radius: 8px; font-family: monospace; font-size: 1.1rem; resize: vertical; }
-        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; }
-        button:hover { background: #1d4ed8; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 20px; }
-        .card { background: var(--card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
-        .measurement-card { border-left: 4px solid var(--primary); margin-bottom: 10px; }
-        h2 { border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 0; }
-        label { font-weight: bold; display: block; margin-bottom: 5px; color: #64748b; font-size: 0.8rem; text-transform: uppercase; }
-        .val { font-size: 1.2rem; font-family: monospace; color: #0f172a; }
-        .error { color: #dc2626; background: #fee2e2; padding: 10px; border-radius: 6px; display: none; margin-top: 10px; }
+        :root { --primary: #2563eb; --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; padding: 1rem; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        /* Header & Input Area */
+        .input-section { background: var(--card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        textarea { width: 100%; height: 100px; padding: 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 1rem; box-sizing: border-box; resize: vertical; margin-bottom: 1rem; }
+        
+        /* Format Selector Buttons */
+        .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .btn-group { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
+        .mode-btn { border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; color: #64748b; background: transparent; transition: 0.2s; }
+        .mode-btn.active { background: white; color: var(--primary); shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .decode-btn { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-left: auto; }
+        .decode-btn:hover { background: #1d4ed8; }
+
+        /* Results UI */
+        .card { background: var(--card); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.5rem; }
+        label { font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700; display: block; margin-bottom: 4px; }
+        .val { font-family: 'Courier New', monospace; font-size: 1.25rem; font-weight: 600; }
+        
+        /* Charge State Badges */
+        .pill-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
+        .pill { background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; }
+        .pill b { color: var(--primary); }
+
+        .measurement-row { border-left: 4px solid var(--primary); }
+        .error { color: #b91c1c; background: #fee2e2; padding: 1rem; border-radius: 8px; display: none; margin-bottom: 1rem; }
+        h2 { margin-top: 0; font-size: 1.1rem; color: #475569; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Hex Packet Decoder</h1>
-    <p>Paste your hex string below (e.g., 5756E9D4C0...)</p>
-    
-    <textarea id="hexInput" placeholder="Enter hex string..."></textarea>
-    <button onclick="decode()">Decode Packet</button>
-    <div id="errorLog" class="error"></div>
-
-    <div id="results" style="display:none;">
-        <div class="card" style="margin-top:20px;">
-            <h2>Header Data</h2>
-            <div class="grid">
-                <div><label>Battery</label><div class="val" id="h-batt">-</div></div>
-                <div><label>Temperature</label><div class="val" id="h-temp">-</div></div>
-                <div><label>Latitude</label><div class="val" id="h-lat">-</div></div>
-                <div><label>Longitude</label><div class="val" id="h-lon">-</div></div>
+    <div class="input-section">
+        <h1>Telemetry Decoder</h1>
+        <textarea id="dataInput" placeholder="Paste Hex or Base64 string here..."></textarea>
+        
+        <div class="controls">
+            <div class="btn-group" id="formatSelector">
+                <button class="mode-btn active" onclick="setFormat('auto')">Auto-Detect</button>
+                <button class="mode-btn" onclick="setFormat('hex')">Hex</button>
+                <button class="mode-btn" onclick="setFormat('base64')">Base64</button>
             </div>
-            <div id="charge-states" style="margin-top:1.5rem; display: flex; gap: 10px; flex-wrap: wrap;"></div>
+            <button class="decode-btn" onclick="process()">Decode Data</button>
+        </div>
+    </div>
+
+    <div id="errorBox" class="error"></div>
+
+    <div id="output" style="display:none;">
+        <div class="card">
+            <h2>Header Information</h2>
+            <div class="grid">
+                <div><label>Battery Voltage</label><div class="val" id="out-batt">-</div></div>
+                <div><label>Temperature</label><div class="val" id="out-temp">-</div></div>
+                <div><label>Lat digits</label><div class="val" id="out-lat">-</div></div>
+                <div><label>Long digits</label><div class="val" id="out-lon">-</div></div>
+            </div>
+            <div class="pill-container" id="out-charge"></div>
         </div>
 
-        <h2 style="margin-top:2rem;">Measurements</h2>
+        <h2 style="padding-left: 0.5rem;">Measurements</h2>
         <div id="measurementsList"></div>
     </div>
 </div>
 
 <script>
-// Constants from your Python script
-const MAX_STD_DEV = 1.0;
-const MAX_REL_HEIGHT = 20.0;
-const MIN_TEMP_C = -30.0, MAX_TEMP_C = 80.0;
-const MIN_BATT_MV = 2000, MAX_BATT_MV = 5000;
+    let selectedFormat = 'auto';
 
-function mapRange(val, inMax, outMin, outMax) {
-    if (val <= 0) return outMin;
-    if (val >= inMax) return outMax;
-    return outMin + (val / inMax) * (outMax - outMin);
-}
+    const MAX_STD_DEV = 1.0;
+    const MAX_REL_HEIGHT = 20.0;
+    const MIN_TEMP_C = -30.0, MAX_TEMP_C = 80.0;
+    const MIN_BATT_MV = 2000, MAX_BATT_MV = 5000;
 
-function decode() {
-    const rawHex = document.getElementById('hexInput').value.replace(/\s+/g, '');
-    const errorLog = document.getElementById('errorLog');
-    const results = document.getElementById('results');
-    
-    try {
-        if (rawHex.length % 2 !== 0) throw "Invalid Hex string length";
-        const bytes = new Uint8Array(rawHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-        errorLog.style.display = 'none';
-        results.style.display = 'block';
+    function setFormat(fmt) {
+        selectedFormat = fmt;
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.innerText.toLowerCase().includes(fmt));
+        });
+    }
 
-        // 1. Parse Header (5 bytes: batt, temp, lat, lon, charge)
-        const battery = Math.round(mapRange(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
-        const temp = mapRange(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2);
-        const lat = bytes[2];
-        const lon = bytes[3];
-        const chargeByte = bytes[4];
+    function mapValue(val, inMax, outMin, outMax) {
+        if (val <= 0) return outMin;
+        if (val >= inMax) return outMax;
+        return outMin + (val / inMax) * (outMax - outMin);
+    }
 
-        document.getElementById('h-batt').innerText = `${battery} mV`;
-        document.getElementById('h-temp').innerText = `${temp} °C`;
-        document.getElementById('h-lat').innerText = lat;
-        document.getElementById('h-lon').innerText = lon;
-
-        // 2. Charge State Fraction (Bit shifting)
-        const names = ["Completed", "Charging", "Recoverable", "Nonrecoverable"];
-        const vals = [
-            (chargeByte >> 6) & 0b11,
-            (chargeByte >> 4) & 0b11,
-            (chargeByte >> 2) & 0b11,
-            (chargeByte >> 0) & 0b11
-        ];
-        const total = vals.reduce((a, b) => a + b, 0);
+    function process() {
+        const input = document.getElementById('dataInput').value.trim().replace(/\s+/g, '');
+        const errorBox = document.getElementById('errorBox');
+        const output = document.getElementById('output');
         
-        const chargeHtml = vals.map((v, i) => {
-            const pct = total ? (v / total * 100).toFixed(1) : 0;
-            return `<div style="background:#f1f5f9; padding:8px 12px; border-radius:20px; font-size:0.9rem;">
-                <strong>${names[i]}:</strong> ${v} (${pct}%)
-            </div>`;
-        }).join('');
-        document.getElementById('charge-states').innerHTML = chargeHtml;
+        errorBox.style.display = 'none';
+        
+        try {
+            let bytes;
+            
+            // Format Logic
+            let useBase64 = false;
+            if (selectedFormat === 'base64') useBase64 = true;
+            else if (selectedFormat === 'auto') {
+                // Auto-detect: if it has non-hex chars or ends in =, assume B64
+                if (!/^[0-9A-Fa-f]+$/.test(input)) useBase64 = true;
+            }
 
-        // 3. Parse Measurements (6 bytes each: uid, u16LE, u8, u8, u8)
+            if (useBase64) {
+                const binaryString = atob(input);
+                bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+            } else {
+                if (input.length % 2 !== 0) throw "Hex string must have an even length.";
+                bytes = new Uint8Array(input.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            }
+
+            if (bytes.length < 5) throw "Packet too short to contain header.";
+
+            render(bytes);
+            output.style.display = 'block';
+        } catch (e) {
+            errorBox.innerText = "Decoding Error: " + e.message;
+            if (e.message === undefined) errorBox.innerText = "Error: " + e;
+            errorBox.style.display = 'block';
+            output.style.display = 'none';
+        }
+    }
+
+    function render(bytes) {
+        // 1. Header (5 bytes)
+        const battery = Math.round(mapValue(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
+        const temp = mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMPERATURE_C = 80.0).toFixed(2);
+        
+        document.getElementById('out-batt').innerText = battery + " mV";
+        document.getElementById('out-temp').innerText = temp + " °C";
+        document.getElementById('out-lat').innerText = bytes[2];
+        document.getElementById('out-lon').innerText = bytes[3];
+
+        // 2. Bit Shifting for Charge States
+        const chargeByte = bytes[4];
+        const states = [
+            { n: "Completed", v: (chargeByte >> 6) & 0b11 },
+            { n: "Charging", v: (chargeByte >> 4) & 0b11 },
+            { n: "Recoverable", v: (chargeByte >> 2) & 0b11 },
+            { n: "Nonrecoverable", v: (chargeByte >> 0) & 0b11 }
+        ];
+        const total = states.reduce((a, b) => a + b.v, 0);
+        
+        document.getElementById('out-charge').innerHTML = states.map(s => {
+            const pct = total ? (s.v / total * 100).toFixed(1) : "0.0";
+            return `<div class="pill">${s.n}: <b>${s.v}</b> (${pct}%)</div>`;
+        }).join('');
+
+        // 3. Measurements (6 bytes each)
         const list = document.getElementById('measurementsList');
         list.innerHTML = '';
         
         for (let i = 5; i + 6 <= bytes.length; i += 6) {
             const uid = bytes[i];
-            // Little Endian u16
-            const rawRelMean = bytes[i+1] | (bytes[i+2] << 8);
+            const rawRelMean = bytes[i+1] | (bytes[i+2] << 8); // Little Endian
             const rawRelStd = bytes[i+3];
-            const numUsed = bytes[i+4];
-            const numSeen = bytes[i+5];
+            const used = bytes[i+4];
+            const seen = bytes[i+5];
 
-            const relMean = mapRange(rawRelMean, 65535, 0, MAX_REL_HEIGHT).toFixed(3);
-            const relStd = mapRange(rawRelStd, 255, 0, MAX_STD_DEV).toFixed(3);
+            const relMean = mapValue(rawRelMean, 65535, 0, MAX_RELATIVE_HEIGHT = 20.0).toFixed(3);
+            const relStd = mapValue(rawRelStd, 255, 0, MAX_STANDARD_DEVIATION = 1.0).toFixed(3);
 
             list.innerHTML += `
-                <div class="card measurement-card">
+                <div class="card measurement-row">
                     <div class="grid">
                         <div><label>UID</label><div class="val">${uid}</div></div>
-                        <div><label>Rel Height Mean</label><div class="val">${relMean} m</div></div>
-                        <div><label>Rel Height Std</label><div class="val">${relStd}</div></div>
-                        <div><label>Obs (Used/Seen)</label><div class="val">${numUsed} / ${numSeen}</div></div>
+                        <div><label>Relative height Mean</label><div class="val">${relMean} m</div></div>
+                        <div><label>Std Dev</label><div class="val">${relStd}</div></div>
+                        <div><label>Used / Seen</label><div class="val">${used} / ${seen}</div></div>
                     </div>
                 </div>`;
         }
-    } catch (e) {
-        errorLog.innerText = "Error: " + e;
-        errorLog.style.display = 'block';
-        results.style.display = 'none';
     }
-}
 </script>
 
 </body>
