@@ -2,7 +2,7 @@ use embassy_rp::{flash::{Blocking, Error, Flash}, peripherals::FLASH, Peri};
 use embassy_time::Instant;
 use defmt::*;
 
-use crate::types::{Measurement, SectorList, BINS_CONTAINER_START, BLOCK_SIZE, CONTAINER_SIZE, FLASH_SIZE, MEASUREMENTS_CONTAINER_START, MEASUREMENT_SIZE, MEASUREMENT_STORAGE_SIZE, NUM_CONTAINERS, SECTOR_CONTAINER_START, SECTOR_LIST_SIZE, START_ADDRESS, USABLE_SIZE};
+use crate::types::{BINS_CONTAINER_START, BLOCK_SIZE, CONFIG_BLOCK_START, CONFIG_CONTAINER_START, CONFIG_SIZE, CONTAINER_SIZE, Config, FLASH_SIZE, MEASUREMENT_SIZE, MEASUREMENT_STORAGE_SIZE, MEASUREMENTS_CONTAINER_START, Measurement, NUM_CONTAINERS, SECTOR_BLOCK_START, SECTOR_CONTAINER_START, SECTOR_LIST_SIZE, START_ADDRESS, SectorList, USABLE_SIZE};
 
 pub struct FlashStorage {
     timing: bool,
@@ -178,8 +178,28 @@ impl SectorStorage {
     }
 
     pub fn save(&self, storage: &mut FlashStorage, sectors: &SectorList) -> Result<(), Error> {
-        storage.partial_erase(SECTOR_CONTAINER_START, 0, BLOCK_SIZE as u32)?;
-        storage.write(SECTOR_CONTAINER_START, 0, &sectors.to_bytes())?;
+        storage.partial_erase(SECTOR_CONTAINER_START, (SECTOR_BLOCK_START * BLOCK_SIZE) as u32, ((SECTOR_BLOCK_START+1) * BLOCK_SIZE) as u32)?;
+        storage.write(SECTOR_CONTAINER_START, (SECTOR_BLOCK_START * BLOCK_SIZE) as u32, &sectors.to_bytes())?;
+        Ok(())
+    }
+}
+
+pub struct ConfigStorage {}
+
+impl ConfigStorage {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn load(&self, storage: &mut FlashStorage) -> Result<Config, Error> {
+        let mut buffer = [0u8; CONFIG_SIZE];
+        storage.read(CONFIG_CONTAINER_START, (CONFIG_BLOCK_START * BLOCK_SIZE) as u32 ,&mut buffer)?;
+        Ok(Config::from_bytes(&buffer).ok_or(Error::Other)?)
+    }
+
+    pub fn save(&self, storage: &mut FlashStorage, config: &Config) -> Result<(), Error> {
+        storage.partial_erase(CONFIG_CONTAINER_START, (CONFIG_BLOCK_START*BLOCK_SIZE) as u32, ((CONFIG_BLOCK_START+1)*BLOCK_SIZE) as u32)?;
+        storage.write(CONFIG_CONTAINER_START, (CONFIG_BLOCK_START * BLOCK_SIZE) as u32, &config.to_bytes())?;
         Ok(())
     }
 }

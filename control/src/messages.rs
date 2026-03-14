@@ -52,6 +52,7 @@ pub enum CommReqMsg{
         temp_c: Option<f32>,
         charge_state_fraction: u8,
     },
+    GetConstellationState
 }
 
 pub enum CommResMsg{
@@ -60,6 +61,14 @@ pub enum CommResMsg{
     },
     Fail {
         sector_uids: Vec<u32, MAX_SECTORS>,
+        error: CommsError
+    },
+    ConstellationState {
+        signal_bars_max: u8,
+        signal_level_max: i8,
+        constellation_visible: bool
+    },
+    ConstellationStateFail {
         error: CommsError
     }
 }
@@ -83,3 +92,35 @@ pub enum MonResMsg{
         fraction: u8
     }
 }
+
+pub enum IntReqMsg{
+    BatVoltSuccess{
+        voltage: u32
+    },
+    BatVoltFail,
+    ConstellationState {
+        signal_bars_max: u8,
+        signal_level_max: i8,
+        constellation_visible: bool
+    },
+    ConstellationStateFail {
+        error: CommsError
+    },
+    GiveConfig {
+        config: Config
+    },
+    GiveState {
+        str: heapless::String<2048>
+    }
+}
+
+pub enum IntResMsg{
+    GetBatVolt,
+    GetConstellationState,
+    GetConfig,
+    SetConfig {
+        config: Config
+    },
+    GetState
+}
+

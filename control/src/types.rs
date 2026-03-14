@@ -3,6 +3,9 @@ use heapless::{Vec, String};
 
 use crate::{realtime::RealTime, utils};
 
+// CONSTANTS
+pub const SECONDS_PER_DAY: u32 = 86400;
+
 // Control
 pub const MAX_SECTORS: usize = 96;
 
@@ -31,6 +34,9 @@ pub const NUM_MEASUREMENTS: usize = NUM_CONTAINER_BLOCKS;
 pub const MEASUREMENTS_CONTAINER_START: usize = 50;
 // 51: other measurements (1 container)
 pub const SECTOR_CONTAINER_START: usize = 51; // 1 block
+pub const SECTOR_BLOCK_START: usize = 0;
+pub const CONFIG_CONTAINER_START: usize = 51; // 1 block
+pub const CONFIG_BLOCK_START: usize = 1;
 
 pub const BURST_SIZE: usize = 64; // Samples per burst
 pub const BIN_BURST_SIZE: usize = 240;  // Burst per bin 
@@ -44,6 +50,11 @@ pub const MAX_MIDPOINTS: usize = 128;
 pub type Sample = u32;
 pub type Burst = Vec<Sample, BURST_SIZE>;
 pub type Bin = Vec<Burst, BIN_BURST_SIZE>;
+
+pub const MID_TIMES_HEADER: usize = 4;
+pub const MID_TIMES_SIZE: usize = MAX_MIDPOINTS * 4;
+pub const CONFIG_HEADER_SIZE: usize = 4 ;
+pub const CONFIG_SIZE: usize = CONFIG_HEADER_SIZE + 18 * 4 + MID_TIMES_SIZE + MID_TIMES_HEADER;
 
 #[derive(Clone)]
 pub struct Config {
@@ -65,13 +76,13 @@ pub struct Config {
     pub qc_iqr_size: f32,
     pub qc_min_peak_to_peak: f32,
 
-    pub sector_mid_times: Vec<u32, MAX_MIDPOINTS>,
-
     pub bins_per_sector: u32,
     pub seconds_per_bin: u32,
 
     pub num_send_measurements: u32,
     pub measure_timeout: u32,
+
+    pub sector_mid_times: Vec<u32, MAX_MIDPOINTS>,
 }
 
 impl Config {
@@ -90,36 +101,140 @@ impl Config {
     pub fn get_measure_duration(&self) -> u32 {
         return self.bins_per_sector*self.seconds_per_bin;
     }
+
+    pub fn to_bytes(&self) -> [u8; CONFIG_SIZE] {
+        let mut data = [0u8; CONFIG_SIZE];
+        let mut offset = 0;
+        data[0..4].copy_from_slice("CONF".as_bytes());
+        offset += 4;
+
+        let mut push_4bytes = |bytes: [u8; 4]| {
+            data[offset..offset + 4].copy_from_slice(&bytes);
+            offset += 4;
+        };
+
+        push_4bytes(self.pre_min_elevation.to_le_bytes());
+        push_4bytes(self.pre_max_elevation.to_le_bytes());
+        push_4bytes(self.pre_min_azimuth.to_le_bytes());
+        push_4bytes(self.pre_max_azimuth.to_le_bytes());
+
+        push_4bytes(self.post_min_elevation.to_le_bytes());
+        push_4bytes(self.post_max_elevation.to_le_bytes());
+        push_4bytes(self.post_min_azimuth.to_le_bytes());
+        push_4bytes(self.post_max_azimuth.to_le_bytes());
+
+        push_4bytes(self.min_relative_height.to_le_bytes());
+        push_4bytes(self.max_relative_height.to_le_bytes());
+        push_4bytes(self.relative_height_step_size.to_le_bytes());
+
+        push_4bytes(self.qc_min_elevation_range.to_le_bytes());
+        push_4bytes(self.qc_iqr_size.to_le_bytes());
+        push_4bytes(self.qc_min_peak_to_peak.to_le_bytes());
+
+        push_4bytes(self.bins_per_sector.to_le_bytes());
+        push_4bytes(self.seconds_per_bin.to_le_bytes());
+        push_4bytes(self.num_send_measurements.to_le_bytes());
+        push_4bytes(self.measure_timeout.to_le_bytes());
+
+        push_4bytes((self.sector_mid_times.len() as u32).to_le_bytes());
+        for &time in self.sector_mid_times.iter() {
+            push_4bytes(time.to_le_bytes());
+        }
+
+        data
+    }
+
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        // Basic length check to prevent panics during slicing
+        if data.len() < CONFIG_SIZE || &data[0..4] != b"CONF" {
+            return None;
+        }
+
+        let mut offset = 4;
+
+        let mut next_4bytes = || {
+            let val = data[offset..offset + 4].try_into().unwrap();
+            offset += 4;
+            val
+        };
+
+        Some(Self {
+            pre_min_elevation: u32::from_le_bytes(next_4bytes()),
+            pre_max_elevation: u32::from_le_bytes(next_4bytes()),
+            pre_min_azimuth: u32::from_le_bytes(next_4bytes()),
+            pre_max_azimuth: u32::from_le_bytes(next_4bytes()),
+
+            post_min_elevation: u32::from_le_bytes(next_4bytes()),
+            post_max_elevation: u32::from_le_bytes(next_4bytes()),
+            post_min_azimuth: u32::from_le_bytes(next_4bytes()),
+            post_max_azimuth: u32::from_le_bytes(next_4bytes()),
+
+            min_relative_height: f32::from_le_bytes(next_4bytes()),
+            max_relative_height: f32::from_le_bytes(next_4bytes()),
+            relative_height_step_size: f32::from_le_bytes(next_4bytes()),
+
+            qc_min_elevation_range: u32::from_le_bytes(next_4bytes()),
+            qc_iqr_size: f32::from_le_bytes(next_4bytes()),
+            qc_min_peak_to_peak: f32::from_le_bytes(next_4bytes()),
+
+            bins_per_sector: u32::from_le_bytes(next_4bytes()),
+            seconds_per_bin: u32::from_le_bytes(next_4bytes()),
+            num_send_measurements: u32::from_le_bytes(next_4bytes()),
+            measure_timeout: u32::from_le_bytes(next_4bytes()),
+
+            sector_mid_times: {
+                let len = u32::from_le_bytes(next_4bytes()) as usize;
+                if len > MAX_MIDPOINTS {
+                    return None;
+                }
+                let mut v = Vec::<u32, MAX_MIDPOINTS>::new();
+                for _ in 0..len {
+                    v.push(u32::from_le_bytes(next_4bytes())).ok()?;
+                }
+                v
+            },
+        })
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         let mut mid_times = Vec::<u32, MAX_MIDPOINTS>::new();
-        // mid_times.push(utils::time_str_to_seconds("11:20:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("11:50:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("12:20:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("13:50:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("14:20:00").unwrap()).unwrap();
-        // mid_times.push(utils::time_str_to_seconds("14:50:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("02:00:00").unwrap()).unwrap();
+        mid_times.push(utils::time_str_to_seconds("00:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("01:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("02:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("03:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("04:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("05:00:00").unwrap()).unwrap();
         mid_times.push(utils::time_str_to_seconds("06:00:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("10:00:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("14:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("07:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("08:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("09:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("10:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("11:00:00").unwrap()).unwrap();
+        mid_times.push(utils::time_str_to_seconds("12:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("13:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("14:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("15:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("16:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("17:00:00").unwrap()).unwrap();
         mid_times.push(utils::time_str_to_seconds("18:00:00").unwrap()).unwrap();
-        mid_times.push(utils::time_str_to_seconds("22:00:00").unwrap()).unwrap();
-
-
+        // mid_times.push(utils::time_str_to_seconds("19:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("20:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("21:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("22:00:00").unwrap()).unwrap();
+        // mid_times.push(utils::time_str_to_seconds("23:00:00").unwrap()).unwrap();
         
         Self {
             pre_min_elevation: 5,
             pre_max_elevation: 30,
-            pre_min_azimuth: 200,
-            pre_max_azimuth: 290,
+            pre_min_azimuth: 120,
+            pre_max_azimuth: 240,
 
             post_min_elevation: 5,
             post_max_elevation: 30,
-            post_min_azimuth: 200,
-            post_max_azimuth: 290,
+            post_min_azimuth: 120,
+            post_max_azimuth: 240,
 
             min_relative_height: 0.5,
             max_relative_height: 15.0,
@@ -131,7 +246,7 @@ impl Default for Config {
 
             sector_mid_times: mid_times,
 
-            bins_per_sector: 6,
+            bins_per_sector: 3,
             seconds_per_bin: 240*5,
 
             num_send_measurements: 3,
@@ -172,6 +287,10 @@ impl SectorList {
         self.sectors.iter()
     }
 
+    pub fn clear(&mut self) {
+        self.sectors.clear()
+    }
+
     pub fn from_bytes(data: &[u8], update: bool) -> Option<Self> {
         let mut sectors = Vec::<Sector, MAX_SECTORS>::new();
         if &data[0..4] != b"SECT" {
@@ -190,12 +309,12 @@ impl SectorList {
                         continue;
                     }
                     SectorState::COMPUTING => {
-                        sector.state = SectorState::TO_COMPUTE;
                         info!("[sect] loaded sector {} in state {:?}, setting to TO_COMPUTE", sector.get_uid(), sector.state);
+                        sector.state = SectorState::TO_COMPUTE;
                     }
                     SectorState::COMMUNICATING => {
-                        sector.state = SectorState::TO_COMMUNICATE;
                         info!("[sect] loaded sector {} in state {:?}, setting to TO_COMMUNICATE", sector.get_uid(), sector.state);
+                        sector.state = SectorState::TO_COMMUNICATE;
                     }
                     SectorState::DONE => {
                         info!("[sect] loaded sector {} in state {:?}, deleteing", sector.get_uid(), sector.state);
@@ -275,6 +394,14 @@ impl SectorList {
         }
         indices
     }
+
+    pub fn print_debug(&self) {
+        info!("--- SectorList Report ---");
+        for s in self.sectors.iter() {
+            info!("{:?}", s); 
+        }
+        info!("--- End of Report ---");
+    }
 }
 
 # [derive(Clone, Copy, Debug, PartialEq, Eq, Format)]
@@ -291,7 +418,7 @@ pub enum SectorState {
 
 pub const SECTOR_SIZE: usize = 41;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Format)]
 pub struct Sector {
     uid: u32,
 
@@ -414,7 +541,7 @@ impl Sector {
     }
 
     pub fn get_end_time(&self) -> u32 {
-        (self.start_time + self.n_bins * self.seconds_per_bin) % 86400
+        (self.start_time + self.n_bins * self.seconds_per_bin) % SECONDS_PER_DAY
     }
 
     pub fn get_lat(&self) -> f32 {
@@ -437,7 +564,7 @@ impl Sector {
         let dt = if time >= self.start_time {
             time - self.start_time
         } else {
-            86400 + time - self.start_time
+            SECONDS_PER_DAY + time - self.start_time
         };
         let bin_id = self.start_bin_index + dt / self.seconds_per_bin;
 

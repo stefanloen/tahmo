@@ -20,12 +20,12 @@ use embassy_time::Timer;
 use gpio::{Level, Output, Pull};
 use embassy_rp::bind_interrupts;
 use embassy_rp::uart::InterruptHandler as UARTInterruptHandler;
-use embassy_rp::peripherals::UART0;
-use embassy_rp::peripherals::UART1;
+use embassy_rp::peripherals::{UART0, UART1, USB};
 use embassy_sync::channel::Channel;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use static_cell::StaticCell;
 use embassy_rp::adc;
+use embassy_rp::usb::{Driver, InterruptHandler};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -46,12 +46,17 @@ mod messages;
 mod battery;
 mod monitor;
 mod dump;
+mod usb;
+mod interface;
 
 use crate::battery::Battery;
 use crate::comms::task_comms;
 use crate::compute::task_compute;
 use crate::control::task_control;
-use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg};
+use crate::interface::Interface;
+use crate::usb::usb_task;
+use crate::interface::interface_task;
+use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
 use crate::gnss::GNSSSensor;
 use crate::measure::task_measure;
 use crate::monitor::task_monitor;
@@ -62,10 +67,13 @@ static MEASURE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, MeasureReqMsg, 
 static COMPUTE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, ComputeReqMsg, 8> = Channel::new();
 static COMM_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, CommReqMsg, 8> = Channel::new();
 static MONITOR_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, MonReqMsg, 8> = Channel::new();
+static INTERFACE_REQUEST_CHANNEL: Channel<CriticalSectionRawMutex, IntReqMsg, 8> = Channel::new();
 static MEASURE_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, MeasureResMsg, 8> = Channel::new();
 static COMPUTE_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, ComputeResMsg, 8> = Channel::new();
 static COMM_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, CommResMsg, 8> = Channel::new();
 static MONITOR_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, MonResMsg, 8> = Channel::new();
+static INTERFACE_RESPONSE_CHANNEL: Channel<CriticalSectionRawMutex, IntResMsg, 8> = Channel::new();
+
 
 pub const GNSS_PRE_UART_BAUDRATE: u32 = 9_600;
 pub const GNSS_POST_UART_BAUDRATE: u32 = 115_200;
@@ -75,6 +83,7 @@ bind_interrupts!(pub struct Irqs {
     UART0_IRQ  => UARTInterruptHandler<UART0>;
     UART1_IRQ  => UARTInterruptHandler<UART1>;
     ADC_IRQ_FIFO => adc::InterruptHandler;
+    USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
 // Program metadata for `picotool info`.
@@ -94,7 +103,8 @@ type StorageType = Mutex<CriticalSectionRawMutex, Option<FlashStorage>>;
 static STORAGE: StorageType = Mutex::new(None);
 
 fn create_clock_config() -> ClockConfig {
-    let result = ClockConfig::system_freq(20_000_000);
+    //USB is unstable below 50Mhz
+    let result = ClockConfig::system_freq(50_000_000);
 
     if result.is_err() {
         error!("Failed to set system clock frequency");
@@ -119,13 +129,18 @@ async fn main(spawner: Spawner) {
     wdg.pause_on_debug(false);
     wdg.start(Duration::from_secs(16));
     
+    // USB
+    let usb_driver = Driver::new(p.USB, Irqs);
+    let usb_context = usb::UsbContext::new(usb_driver);
+    let interface = Interface::new(usb_context.class);
+
     // Battery peripherals
-    let pin_bat_stat1 = Input::new(p.PIN_22, Pull::None);
-    let pin_bat_stat2 = Input::new(p.PIN_21, Pull::None);
-    let pin_bat_CE = Output::new(p.PIN_20, Level::Low);
+    let pin_bat_stat1 = Input::new(p.PIN_10, Pull::None);
+    let pin_bat_stat2 = Input::new(p.PIN_8, Pull::None);
+    let pin_bat_CE = Output::new(p.PIN_6, Level::Low);
 
     let adc: adc::Adc<'_, adc::Async> = adc::Adc::new(p.ADC, Irqs, adc::Config::default());
-    let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_26, Pull::None);
+    let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_28, Pull::None);
 
     //Temp sensor
     let pin_temp = adc::Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
@@ -144,17 +159,17 @@ async fn main(spawner: Spawner) {
     // GNSS peripherals
     let mut gnss_uart_config = uart::Config::default();
     gnss_uart_config.baudrate = GNSS_PRE_UART_BAUDRATE;
-    let gnss_uart = uart::Uart::new(p.UART0, p.PIN_16, p.PIN_17, Irqs, p.DMA_CH0, p.DMA_CH1, gnss_uart_config);
+    let gnss_uart = uart::Uart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, p.DMA_CH0, p.DMA_CH1, gnss_uart_config);
     let pin_gnss_power = Output::new(p.PIN_18, Level::Low);
     let mut gnss_sensor = GNSSSensor::new(gnss_uart, pin_gnss_power);
 
     // Rockblock pheripherals
     let mut config_uart_rockblock = uart::Config::default();
     config_uart_rockblock.baudrate = ROCKBLOCK_UART_BAUDRATE;
-    let uart_rockblock = uart::Uart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, p.DMA_CH2, p.DMA_CH3, config_uart_rockblock);
-    let pin_rockblock_power = Output::new(p.PIN_8, Level::Low);
-    let pin_iridium_enable = Output::new(p.PIN_7, Level::Low);
-    let pin_iridium_status = gpio::Input::new(p.PIN_6, gpio::Pull::None);
+    let uart_rockblock = uart::Uart::new(p.UART0, p.PIN_0, p.PIN_1, Irqs, p.DMA_CH2, p.DMA_CH3, config_uart_rockblock);
+    let pin_rockblock_power = Output::new(p.PIN_20, Level::Low);
+    let pin_iridium_enable = Output::new(p.PIN_22, Level::Low);
+    let pin_iridium_status = gpio::Input::new(p.PIN_26, gpio::Pull::None);
     let mut rockblock = RockBlock9704::new(
         uart_rockblock,
         pin_rockblock_power,
@@ -199,6 +214,22 @@ async fn main(spawner: Spawner) {
     }
 
     info!("[main] spawning tasks");
+
+    let result = spawner.spawn(usb_task(usb_context.device));
+
+    if result.is_err() {
+        error!("Failed to spawn USB task: {}", result.unwrap_err());
+    }
+
+    let result = spawner.spawn(interface_task(
+        &INTERFACE_REQUEST_CHANNEL,
+        &INTERFACE_RESPONSE_CHANNEL,
+        interface));
+
+    if result.is_err() {
+        error!("Failed to spawn Interface task: {}", result.unwrap_err());
+    }
+
     let result = spawner.spawn(task_measure(
         &MEASURE_REQUEST_CHANNEL,
         &MEASURE_RESPONSE_CHANNEL,
@@ -236,10 +267,12 @@ async fn main(spawner: Spawner) {
         &COMPUTE_REQUEST_CHANNEL,
         &COMM_REQUEST_CHANNEL,
         &MONITOR_REQUEST_CHANNEL,
+        &INTERFACE_REQUEST_CHANNEL,
         &MEASURE_RESPONSE_CHANNEL,
         &COMPUTE_RESPONSE_CHANNEL,
         &COMM_RESPONSE_CHANNEL, 
         &MONITOR_RESPONSE_CHANNEL,
+        &INTERFACE_RESPONSE_CHANNEL,
         &STORAGE,
     ));
 
@@ -265,7 +298,6 @@ async fn main(spawner: Spawner) {
     
     info!("[main] startup complete in {} ms", Instant::now().as_millis() - start.as_millis());
 }
-
 
 #[embassy_executor::task]
 async fn led_blink(mut led: Output<'static>) {

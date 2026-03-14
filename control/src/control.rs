@@ -4,11 +4,12 @@ use defmt::{error, info};
 use embassy_time::Timer;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Channel};
 use heapless::Vec;
-use embassy_futures::select::{select5, Either5};
+use embassy_futures::select::{Either6, select6};
+use core::fmt::Write;
 
 use crate::realtime::RealTime;
-use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg};
-use crate::storage::SectorStorage;
+use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
+use crate::storage::{ConfigStorage, SectorStorage};
 use crate::types::{Config, Sector, SectorList, SectorState, MAX_SECTORS};
 use crate::{scheduler::*, StorageType};
 
@@ -25,14 +26,31 @@ pub async fn task_control(
     compute_request_channel: &'static Channel<CriticalSectionRawMutex, ComputeReqMsg, 8>,
     comm_request_channel: &'static Channel<CriticalSectionRawMutex, CommReqMsg, 8>,
     mon_request_channel: &'static Channel<CriticalSectionRawMutex, MonReqMsg, 8>,
+    int_request_channel: &'static Channel<CriticalSectionRawMutex, IntReqMsg, 8>,
     measure_response_channel: &'static Channel<CriticalSectionRawMutex, MeasureResMsg, 8>,
     compute_response_channel: &'static Channel<CriticalSectionRawMutex, ComputeResMsg, 8>,
     comm_response_channel: &'static Channel<CriticalSectionRawMutex, CommResMsg, 8>,
     mon_response_channel: &'static Channel<CriticalSectionRawMutex, MonResMsg, 8>,
+    int_response_channel: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     storage: &'static StorageType,
 ) {
-    let config = Config::default();
     info!("[cont] starting");
+    let mut config: Config;
+    let config_storage = ConfigStorage::new();
+    {
+        let mut storage_lock = storage.lock().await;
+        let storage = storage_lock.as_mut().expect("Storage should be initialized");
+        let result = config_storage.load(storage);
+        if let Ok(loaded_config) = result {
+            config = loaded_config;
+
+            info!("[cont] loaded config from storage");
+        } else {
+            config = Config::default();
+            info!("[cont] no stored config found ({}), creating default", result.err().unwrap());
+        }
+    }
+
     info!(
         "[cont] configuration: [{}] measurements ({})", 
         config.get_mid_times_as_str().as_str(),
@@ -143,17 +161,20 @@ pub async fn task_control(
             Timer::after_secs(u32::MAX as u64)
         };
 
+        sectors.print_debug();
+
         info!("[cont] waiting for events or next timer");
 
-        let result = select5(
+        let result = select6(
             &mut timer,
             measure_response_channel.receive(),
             compute_response_channel.receive(),
             comm_response_channel.receive(),
-            mon_response_channel.receive()
+            mon_response_channel.receive(),
+            int_response_channel.receive()
         ).await;
         match result {
-            Either5::First(_) => {
+            Either6::First(_) => {
                 info!("[cont] next sector timer expired, getting next sector");
                 let sector_awaiting_idx = sectors.get_idx_for_state(SectorState::AWAITING);
                 if let Some(idx) = sector_awaiting_idx {
@@ -169,7 +190,7 @@ pub async fn task_control(
                     info!("No sector in AWAITING state when timer expired");
                 }
             }
-            Either5::Second(measure_res_msg) => {
+            Either6::Second(measure_res_msg) => {
                 match measure_res_msg {
                     MeasureResMsg::RefTimeSuccess { deviation, date} => {
                         info!("[cont] received reference time from GNSS");
@@ -207,7 +228,7 @@ pub async fn task_control(
                     }
                 }
             }
-            Either5::Third(compute_res_msg) => {
+            Either6::Third(compute_res_msg) => {
                 match compute_res_msg {
                     ComputeResMsg::Success { sector_uid } => {
                         info!("[cont] received computation success from core 1");
@@ -224,7 +245,7 @@ pub async fn task_control(
                     }
                 }
             }
-            Either5::Fourth(comm_res_msg) => {
+            Either6::Fourth(comm_res_msg) => {
                 match comm_res_msg {
                     CommResMsg::Success { sector_uids } => {
                         info!("[cont] received communication success from core 1");
@@ -243,15 +264,77 @@ pub async fn task_control(
                         }
                         sectors.set_changed(true);
                     }
+                    CommResMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible } => {
+                        int_request_channel.send(IntReqMsg::ConstellationState { signal_bars_max, signal_level_max, constellation_visible }).await;
+                    },
+                    CommResMsg::ConstellationStateFail { error } => {
+                        int_request_channel.send(IntReqMsg::ConstellationStateFail { error } ).await;
+                    }
                 }
             }
-            Either5::Fifth(mon_res_msg) => {
+            Either6::Fifth(mon_res_msg) => {
                 match mon_res_msg {
                     MonResMsg::BatVoltSuccess { voltage } => battery_mv = Some(voltage),
                     MonResMsg::BatVoltFail => battery_mv = None,
                     MonResMsg::TempSuccess { temp_c } => chip_c = Some(temp_c),
                     MonResMsg::TempFail => chip_c = None,
                     MonResMsg::ChargeStateFraction { fraction } => charge_state_fraction = fraction,
+                }
+            }
+            Either6::Sixth(int_res_msg) => {
+                match int_res_msg {
+                    IntResMsg::GetBatVolt => {
+                        // Immediately respond with battery voltage
+                        // This will need more complex state machine for responses from interface that
+                        // need drastic change of control state
+                        match battery_mv {
+                            Some(voltage) => {
+                                int_request_channel.send(IntReqMsg::BatVoltSuccess { voltage }).await;
+                            },
+                            _ => {
+                                int_request_channel.send(IntReqMsg::BatVoltFail).await;
+                            }
+                        }
+                    }
+                    IntResMsg::GetConstellationState => {
+                        // Request constellation state from the comms task
+                        // TODO: Check if comms is actually available
+                        comm_request_channel.send(CommReqMsg::GetConstellationState).await;
+                    }
+                    IntResMsg::GetConfig => {
+                        int_request_channel.send(IntReqMsg::GiveConfig {config: config.clone() }).await;
+                    }
+                    IntResMsg::SetConfig{ config: new_config} => {
+                        //TODO abort measurements, computing and communication and empty sectorlist
+                        let safe_to_change_config = sectors.iter().all(|s| s.state == SectorState::AWAITING); 
+
+                        if safe_to_change_config{
+                            config = new_config;
+
+                            save_config(storage, &mut config).await;
+
+                            sectors.clear();
+                            sectors.set_changed(true);
+                            realtime_status = RealtimeStatus::NotAvailable;
+
+                            sleep_until_time = None;
+                            sleep_until_date = None;
+
+                            info!("[cont] config is updated")
+                        } else {
+                            info!("[cont] cannot update config")
+                        }
+                    }
+                    IntResMsg::GetState => {
+                        let mut s = heapless::String::<2048>::new();
+                        writeln!(s, "--- SectorList Report ---").ok();
+                        for part in sectors.iter() {
+                            writeln!(s, "{:?}", part).ok(); 
+                        }
+                        writeln!(s, "--- End of Report ---").ok();
+                        
+                        int_request_channel.send(IntReqMsg::GiveState { str: s }).await;
+                    }
                 }
             }
         }
@@ -273,4 +356,12 @@ pub async fn save_sectors(storage: &'static StorageType, sectors: &mut SectorLis
     let storage = storage_lock.as_mut().expect("Storage should be initialized");
     let sector_storage = SectorStorage::new();
     sector_storage.save(storage, sectors).expect("Should save sectors");
+}
+
+pub async fn save_config(storage: &'static StorageType, config: &mut Config) {
+    info!("[cont] saving config to storage");
+    let mut storage_lock = storage.lock().await;
+    let storage = storage_lock.as_mut().expect("Storage should be initialized");
+    let config_storage = ConfigStorage::new();
+    config_storage.save(storage, config).expect("Should save config");
 }
