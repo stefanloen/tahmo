@@ -2,7 +2,7 @@ use embassy_rp::{flash::{Blocking, Error, Flash}, peripherals::FLASH, Peri};
 use embassy_time::Instant;
 use defmt::*;
 
-use crate::types::{BINS_CONTAINER_START, BLOCK_SIZE, CONFIG_BLOCK_START, CONFIG_CONTAINER_START, CONFIG_SIZE, CONTAINER_SIZE, Config, FLASH_SIZE, MEASUREMENT_SIZE, MEASUREMENT_STORAGE_SIZE, MEASUREMENTS_CONTAINER_START, Measurement, NUM_CONTAINERS, SECTOR_BLOCK_START, SECTOR_CONTAINER_START, SECTOR_LIST_SIZE, START_ADDRESS, SectorList, USABLE_SIZE};
+use crate::types::{BINS_CONTAINER_START, BLOCK_SIZE, CONFIG_BLOCK_START, CONFIG_CONTAINER_START, CONFIG_SIZE, Config, EVENTLOG_CONTAINER_START, EVENTLOG_BLOCK_START, EVENTLOG_SIZE, EventLog, CONTAINER_SIZE, FLASH_SIZE, MEASUREMENT_SIZE, MEASUREMENT_STORAGE_SIZE, MEASUREMENTS_CONTAINER_START, Measurement, NUM_CONTAINERS, SECTOR_BLOCK_START, SECTOR_CONTAINER_START, SECTOR_LIST_SIZE, START_ADDRESS, SectorList, USABLE_SIZE};
 
 pub struct FlashStorage {
     timing: bool,
@@ -200,6 +200,26 @@ impl ConfigStorage {
     pub fn save(&self, storage: &mut FlashStorage, config: &Config) -> Result<(), Error> {
         storage.partial_erase(CONFIG_CONTAINER_START, (CONFIG_BLOCK_START*BLOCK_SIZE) as u32, ((CONFIG_BLOCK_START+1)*BLOCK_SIZE) as u32)?;
         storage.write(CONFIG_CONTAINER_START, (CONFIG_BLOCK_START * BLOCK_SIZE) as u32, &config.to_bytes())?;
+        Ok(())
+    }
+}
+
+pub struct EventLogStorage {}
+
+impl EventLogStorage{
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn load(&self, storage: &mut FlashStorage) -> Result<EventLog, Error> {
+        let mut buffer = [0u8; EVENTLOG_SIZE];
+        storage.read(EVENTLOG_CONTAINER_START, (EVENTLOG_BLOCK_START * BLOCK_SIZE) as u32, &mut buffer)?;
+        Ok(EventLog::from_bytes(&buffer).ok_or(Error::Other)?)
+    }
+
+    pub fn save(&self, storage: &mut FlashStorage, event_log: &EventLog) -> Result<(), Error> {
+        storage.partial_erase(EVENTLOG_CONTAINER_START, (EVENTLOG_BLOCK_START*BLOCK_SIZE) as u32, ((EVENTLOG_BLOCK_START+1)*BLOCK_SIZE) as u32)?;
+        storage.write(EVENTLOG_CONTAINER_START, (EVENTLOG_BLOCK_START * BLOCK_SIZE) as u32, &event_log.to_bytes())?;
         Ok(())
     }
 }

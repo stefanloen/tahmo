@@ -1,6 +1,6 @@
 use heapless::Vec;
 
-use crate::{comms::CommsError, compute::ComputeError, measure::{MeasureResult, SectorFailError}, realtime::Deviation, types::{Config, Sector, MAX_SECTORS}};
+use crate::{comms::CommsError, compute::ComputeError, measure::{MeasureResult, SectorFailError}, realtime::Deviation, types::{Config, Event, MAX_EVENTS, MAX_SECTORS, Sector}};
 
 pub enum MeasureReqMsg {
     GetRefTime,
@@ -51,6 +51,7 @@ pub enum CommReqMsg{
         battery_mv: Option<u32>,
         temp_c: Option<f32>,
         charge_state_fraction: u8,
+        events: Vec<Event, MAX_EVENTS>
     },
     GetConstellationState
 }

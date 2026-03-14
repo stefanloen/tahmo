@@ -12,11 +12,15 @@ use libm::floorf;
 use crate::messages::{CommReqMsg, CommResMsg};
 use crate::rockblock::{IMTMessage, RockBlock9704, BODY_SIZE, IMT_DEFAULT_TOPIC};
 use crate::storage::MeasurementStorage;
-use crate::types::{Measurement, Sector, MAX_SECTORS, NUM_MEASUREMENTS};
+use crate::types::{Event, MAX_EVENTS, MAX_SECTORS, Measurement, NUM_MEASUREMENTS, Sector};
 use crate::StorageType;
 
-const MEASUREMENT_PACKET_SIZE: usize = 6; // bytes
-const PACKET_HEADER_SIZE: usize = 4; // bytes
+const MEASUREMENT_PACKET_SIZE: usize = 6;
+const PACKET_METADATA_SIZE: usize = 6;
+const PACKET_MEASUREMENT_COUNT_SIZE: usize = 1;
+const MAX_MEASUREMENT_PACKETS: usize = 10;
+const PACKET_SIZE: usize = PACKET_METADATA_SIZE + PACKET_MEASUREMENT_COUNT_SIZE+ (MAX_MEASUREMENT_PACKETS * MEASUREMENT_PACKET_SIZE);
+
 const MAX_STANDARD_DEVIATION: f32 = 1.0;
 const MAX_RELATIVE_HEIGHT: f32 = 20.0;
 const MIN_TEMPERATURE_C: f32 = -30.0;
@@ -54,27 +58,25 @@ impl MeasurementPacket {
     }
 }
 
-const MAX_MEASUREMENT_PACKETS: usize = 10;
-
-pub struct Packet { // 5 + n * 5 bytes = 55
+pub struct Packet {
     battery: u8,
     temp: u8,
     lat: u8,
     lon: u8,
     charge_state_fraction: u8,
+    boot_count: u8,
     measurements: Vec<MeasurementPacket, MAX_MEASUREMENT_PACKETS>,
 }
 
-const PACKET_SIZE: usize = PACKET_HEADER_SIZE + (MAX_MEASUREMENT_PACKETS * MEASUREMENT_PACKET_SIZE);
-
 impl Packet {
-    pub fn new(battery: u8, temp: u8, charge_state_fraction: u8) -> Self {
+    pub fn new(battery: u8, temp: u8, charge_state_fraction: u8, boot_count: u8) -> Self {
         Self {
             battery,
             temp,
             lat: 0,
             lon: 0,
             charge_state_fraction,
+            boot_count,
             measurements: Vec::new(),
         }
     }
@@ -90,15 +92,21 @@ impl Packet {
 
     pub fn to_bytes(&self) -> Vec<u8, PACKET_SIZE> {
         let mut data = Vec::<u8, PACKET_SIZE>::new();
-        data.extend_from_slice(&self.battery.to_le_bytes()).ok();
-        data.extend_from_slice(&self.temp.to_le_bytes()).ok();
-        data.extend_from_slice(&self.lat.to_le_bytes()).ok();
-        data.extend_from_slice(&self.lon.to_le_bytes()).ok();
-        data.extend_from_slice(&self.charge_state_fraction.to_le_bytes()).ok();
+        
+        // Metadata
+        data.push(self.battery).ok();
+        data.push(self.temp).ok();
+        data.push(self.lat).ok();
+        data.push(self.lon).ok();
+        data.push(self.charge_state_fraction).ok();
+        data.push(self.boot_count).ok();
+
+        // Measurements
+        data.push(self.measurements.len() as u8).ok(); 
         for measurement in self.measurements.iter() {
             let meas_bytes = measurement.to_bytes();
             data.extend_from_slice(&meas_bytes).ok();
-        }
+        }  
         data
     }
 }
@@ -120,7 +128,7 @@ pub async fn task_comms(
         match select {
             Either::First(request) => {
                 match request {
-                    CommReqMsg::Send { sectors, config, battery_mv, temp_c, charge_state_fraction  } => {
+                    CommReqMsg::Send { sectors, config, battery_mv, temp_c, charge_state_fraction, events  } => {
                         let uids: heapless::Vec<u32, MAX_SECTORS> = sectors.iter()
                             .map(|s| s.get_uid())
                             .take(MAX_SECTORS)
@@ -130,10 +138,10 @@ pub async fn task_comms(
                             &mut rockblock, 
                             storage, 
                             sectors, 
-                            config.num_send_measurements, 
                             battery_mv, 
                             temp_c,
-                            charge_state_fraction
+                            charge_state_fraction,
+                            events
                         ).await;
                         if result.is_err() {
                             info!("[comm] communication failed");
@@ -178,10 +186,10 @@ async fn run_comms(
     rockblock: &mut RockBlock9704,
     storage: &'static StorageType,
     sectors: Vec<Sector, MAX_SECTORS>,
-    num_measurements: u32,
     battery_mv: Option<u32>,
     temp_c: Option<f32>,
     charge_state_fraction: u8,
+    events: Vec<Event, MAX_EVENTS>
 ) -> Result<(), CommsError> {
     info!("[comm] Turning on RockBlock");
     rockblock.power_on().await;
@@ -212,14 +220,19 @@ async fn run_comms(
         None => 0
     }; 
 
+    let boot_count = events
+        .iter()
+        .filter(|e| matches!(e, Event::Boot(_)))
+        .count() as u8;
+
     let mut packet = Packet::new(
         scaled_bat_mv,
         scaled_temp_c,
-        charge_state_fraction
+        charge_state_fraction,
+        boot_count
     );
 
     let mut highest_uid = 0;
-    let mut highest_index = 0;
     let mut lat = 0f32;
     let mut lon = 0f32;
 
@@ -227,20 +240,9 @@ async fn run_comms(
         if let Ok(measurement) = get_measurement_packet(storage, sector.get_measurement_index()).await {
             if sector.get_uid() > highest_uid {
                 highest_uid = sector.get_uid();
-                highest_index = sector.get_measurement_index();
                 lat = sector.get_lat();
                 lon = sector.get_lon();
             }
-            if packet.push(measurement).is_err() {
-                info!("[comm] Packet full, stopping adding measurements");
-                break;
-            }
-        }
-    }
-
-    for i in 1..(num_measurements - sectors.len() as u32 + 1) {
-        let index = (highest_index - i) % NUM_MEASUREMENTS as u32;
-        if let Ok(measurement) = get_measurement_packet(storage, index).await {
             if packet.push(measurement).is_err() {
                 info!("[comm] Packet full, stopping adding measurements");
                 break;

@@ -9,8 +9,8 @@ use core::fmt::Write;
 
 use crate::realtime::RealTime;
 use crate::messages::{MeasureReqMsg, ComputeReqMsg, CommReqMsg, MonReqMsg, IntReqMsg, MeasureResMsg, ComputeResMsg, CommResMsg, MonResMsg, IntResMsg};
-use crate::storage::{ConfigStorage, SectorStorage};
-use crate::types::{Config, Sector, SectorList, SectorState, MAX_SECTORS};
+use crate::storage::{ConfigStorage, EventLogStorage, SectorStorage};
+use crate::types::{BootEvent, Config, Event, EventLog, MAX_SECTORS, Sector, SectorList, SectorState};
 use crate::{scheduler::*, StorageType};
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -18,6 +18,30 @@ pub enum RealtimeStatus {
     NotAvailable = 0,
     Requested = 1,
     Available = 2,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum BatteryStatus {
+    NotReady = 0,
+    Ready = 1
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum EventLogStatus {
+    NotReady = 0,
+    Ready = 1
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum TempStatus {
+    NotReady = 0,
+    Ready = 1
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum ChargeStateStatus {
+    NotReady = 0,
+    Ready = 1
 }
 
 #[embassy_executor::task]
@@ -62,16 +86,27 @@ pub async fn task_control(
 
     // List of tasks
     let mut realtime_status = RealtimeStatus::NotAvailable;
+
     let mut sectors: SectorList;
     let mut sleep_until_time: Option<u32> = None;
     let mut sleep_until_date: Option<u32> = None;
     let sector_storage = SectorStorage::new();
 
-    // Latest battery and temperature
+    // Device status
+    let mut battery_status = BatteryStatus::NotReady;
+    let mut charge_state_status = ChargeStateStatus::NotReady;
+    let mut temp_status = TempStatus::NotReady;
+    let mut eventlog_status = EventLogStatus::NotReady;
+
     let mut battery_mv: Option<u32> = None;
     let mut chip_c: Option<f32> = None;
     let mut charge_state_fraction: u8 = 0;
-    let mut reset_charge_state_monitor = false;
+
+    let mut event_log: EventLog;
+    let event_log_storage = EventLogStorage::new();
+    let mut pending_boot = true;
+
+    let mut reset_device_status = false;
 
     {
         let mut storage_lock = storage.lock().await;
@@ -88,6 +123,21 @@ pub async fn task_control(
             info!("[cont] no stored sectors found ({}), starting fresh", result.err().unwrap());
         }
     }
+
+    {
+        let mut storage_lock = storage.lock().await;
+        let storage = storage_lock.as_mut().expect("Storage should be initialized");
+        let result = event_log_storage.load(storage);
+        if let Ok(loaded_event_log) = result {
+            event_log = loaded_event_log;
+
+            info!("[cont] loaded {} events from storage", event_log.len());
+        } else {
+            event_log = EventLog::new();
+            info!("[cont] no stored events found ({}), starting fresh", result.err().unwrap());
+        }
+    }
+    
 
     loop {
         // Send out tasks
@@ -125,35 +175,59 @@ pub async fn task_control(
             sectors.set_changed(true);
         }
 
-        let list_to_communicate = sectors.get_idxs_for_state(SectorState::TO_COMMUNICATE);
-        if list_to_communicate.len() > 0 {
-            let mut sectors_to_send = Vec::<Sector, MAX_SECTORS>::new();
-            for &index in list_to_communicate.iter() {
-                let sector = sectors.get_mut(index);
-                info!("[cont] scheduling communication for sector {}", sector.get_uid());
-                sector.state = SectorState::COMMUNICATING;
-                sectors_to_send.push(sector.clone()).expect("Should fit");
+        let ready_to_com = battery_status == BatteryStatus::Ready && 
+            temp_status == TempStatus::Ready &&
+            charge_state_status == ChargeStateStatus::Ready &&
+            eventlog_status == EventLogStatus::Ready;
+
+        if ready_to_com {
+            let list_to_communicate = sectors.get_idxs_for_state(SectorState::TO_COMMUNICATE);
+            if list_to_communicate.len() > 0 {
+                let mut sectors_to_send = Vec::<Sector, MAX_SECTORS>::new();
+                for &index in list_to_communicate.iter() {
+                    let sector = sectors.get_mut(index);
+                    info!("[cont] scheduling communication for sector {}", sector.get_uid());
+                    sector.state = SectorState::COMMUNICATING;
+                    sectors_to_send.push(sector.clone()).expect("Should fit");
+                }
+                sectors.set_changed(true);
+                info!("[cont] requesting communication for {} sectors", sectors_to_send.len());
+                comm_request_channel.send(CommReqMsg::Send { 
+                    sectors: sectors_to_send, 
+                    config: config.clone(), 
+                    battery_mv: battery_mv, 
+                    temp_c: chip_c,
+                    charge_state_fraction: charge_state_fraction,
+                    events: event_log.events.clone()
+                }).await;
             }
-            sectors.set_changed(true);
-            info!("[cont] requesting communication for {} sectors", sectors_to_send.len());
-            comm_request_channel.send(CommReqMsg::Send { 
-                sectors: sectors_to_send, 
-                config: config.clone(), 
-                battery_mv: battery_mv, 
-                temp_c: chip_c,
-                charge_state_fraction
-            }).await;
         }
 
-        // Reset charge state monitor
-        if reset_charge_state_monitor {
+        // Reset everything that integrates between communications
+        if reset_device_status {
             info!("[cont] Resetting charge state monitor");
             mon_request_channel.send(MonReqMsg::ResetChargeStateMonitor).await;
-            reset_charge_state_monitor = false;
+
+            info!("[cont] Clearing event log");
+            event_log.clear();
+            reset_device_status = false;
+        }
+
+        if pending_boot && realtime_status == RealtimeStatus::Available {
+            let (time, date) = realtime.get_boot_real_time();
+            let boot_event = BootEvent::new(time,date);
+            event_log.push(boot_event);
+            pending_boot = false;
+            eventlog_status = EventLogStatus::Ready;
+            info!("[cont] logged boot event at {} on {}", 
+            crate::utils::seconds_to_time_str(time).as_str(), 
+            crate::utils::date_to_str(date).as_str(),
+);
         }
 
         // Wait for responses
         save_sectors(storage, &mut sectors).await;
+        save_eventlog(storage, &mut event_log).await;
 
         let mut timer = if let Some(st) = sleep_until_time && let Some(sd) = sleep_until_date {
             realtime.get_timer(st, sd)
@@ -252,12 +326,12 @@ pub async fn task_control(
                         for &sector_uid in sector_uids.iter() {
                             sectors.delete_uid(sector_uid);
                         }
-                        reset_charge_state_monitor = true;
+                        reset_device_status = true;
                         sectors.set_changed(true);
                     }
                     CommResMsg::Fail { sector_uids, error } => {
                         error!("Communication failed: {:?}", error);
-                        // recommicate
+                        // recommuniicate
                         for &sector_uid in sector_uids.iter() {
                             let sector = sectors.get_mut_uid(sector_uid).expect("Sector should exist");
                             sector.state = SectorState::TO_COMMUNICATE;
@@ -274,11 +348,41 @@ pub async fn task_control(
             }
             Either6::Fifth(mon_res_msg) => {
                 match mon_res_msg {
-                    MonResMsg::BatVoltSuccess { voltage } => battery_mv = Some(voltage),
-                    MonResMsg::BatVoltFail => battery_mv = None,
-                    MonResMsg::TempSuccess { temp_c } => chip_c = Some(temp_c),
-                    MonResMsg::TempFail => chip_c = None,
-                    MonResMsg::ChargeStateFraction { fraction } => charge_state_fraction = fraction,
+                    MonResMsg::BatVoltSuccess { voltage } => {
+                        battery_mv = Some(voltage);
+                        if battery_status == BatteryStatus::NotReady {
+                            battery_status = BatteryStatus::Ready;
+                            info!("[cont] Battery status set to Ready");
+                        }
+                    },
+                    MonResMsg::BatVoltFail => {
+                        battery_mv = None;
+                        if battery_status == BatteryStatus::NotReady {
+                            battery_status = BatteryStatus::Ready;
+                            info!("[cont] Battery status set to Ready");
+                        }
+                    },
+                    MonResMsg::TempSuccess { temp_c } => {
+                        chip_c = Some(temp_c);
+                        if temp_status == TempStatus::NotReady {
+                            temp_status = TempStatus::Ready;
+                            info!("[cont] Temperature status set to Ready");
+                        }
+                    },
+                    MonResMsg::TempFail => {
+                        chip_c = None;
+                        if temp_status == TempStatus::NotReady {
+                            temp_status = TempStatus::Ready;
+                            info!("[cont] Temperature status set to Ready");
+                        }
+                    },
+                    MonResMsg::ChargeStateFraction { fraction } => {
+                        charge_state_fraction = fraction;
+                        if charge_state_status == ChargeStateStatus::NotReady {
+                            charge_state_status = ChargeStateStatus::Ready;
+                            info!("[cont] Charge state status set to Ready");
+                        }
+                    },
                 }
             }
             Either6::Sixth(int_res_msg) => {
@@ -327,10 +431,37 @@ pub async fn task_control(
                     }
                     IntResMsg::GetState => {
                         let mut s = heapless::String::<2048>::new();
-                        writeln!(s, "--- SectorList Report ---").ok();
-                        for part in sectors.iter() {
-                            writeln!(s, "{:?}", part).ok(); 
+                        
+                        // --- Sector Section ---
+                        writeln!(s, "\n--- SECTORS ({}) ---", sectors.len()).ok();
+                            for sector in sectors.iter() {
+                                writeln!(
+                                    s, 
+                                    "UID:{} [{:?}] Start:{} {} End: {}", 
+                                    sector.get_uid(), 
+                                    sector.state, 
+                                    crate::utils::date_to_str(sector.get_start_day()).as_str(),
+                                    crate::utils::seconds_to_time_str(sector.get_start_time()).as_str(),
+                                    crate::utils::seconds_to_time_str(sector.get_end_time()).as_str()
+                                ).ok(); 
+                            }
+
+                        // --- EventLog Section ---
+                        writeln!(s, "\n--- EVENTS ({}) ---", event_log.len()).ok();
+                        for event in event_log.events.iter() {
+                            match event {
+                                Event::Boot(e) => {
+                                    writeln!(
+                                        s, 
+                                        "[{}] Date:{} Time:{}", 
+                                        event.type_str(),
+                                        crate::utils::date_to_str(e.date).as_str(),
+                                        crate::utils::seconds_to_time_str(e.time).as_str()
+                                    ).ok();
+                                }
+                            }
                         }
+                        
                         writeln!(s, "--- End of Report ---").ok();
                         
                         int_request_channel.send(IntReqMsg::GiveState { str: s }).await;
@@ -364,4 +495,17 @@ pub async fn save_config(storage: &'static StorageType, config: &mut Config) {
     let storage = storage_lock.as_mut().expect("Storage should be initialized");
     let config_storage = ConfigStorage::new();
     config_storage.save(storage, config).expect("Should save config");
+}
+
+pub async fn save_eventlog(storage: &'static StorageType, eventlog: &mut EventLog) {
+    if eventlog.has_changed() == false {
+        info!("[cont] no changes to eventlog, not saving");
+        return;
+    }
+    eventlog.set_changed(false);
+    info!("[cont] saving {} events to storage", eventlog.len());
+    let mut storage_lock = storage.lock().await;
+    let storage = storage_lock.as_mut().expect("Storage should be initialized");
+    let event_log_storage = EventLogStorage::new();
+    event_log_storage.save(storage, eventlog).expect("Should save eventlog");
 }

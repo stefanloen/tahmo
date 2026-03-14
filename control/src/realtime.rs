@@ -37,6 +37,20 @@ impl RealTime {
         self.ref_real_date + extra_days
     }
 
+    pub fn get_boot_real_time(&self) -> (u32, u32) {
+        let total_pico_seconds = Instant::now().as_secs() * SPEEDUP_FACTOR;
+        
+        let current_total_seconds = (self.ref_real_date as u64 * SECONDS_PER_DAY as u64) 
+                                    + self.get_real_time() as u64;
+        
+        let startup_total_seconds = current_total_seconds.saturating_sub(total_pico_seconds as u64);
+        
+        let startup_date = (startup_total_seconds / SECONDS_PER_DAY as u64) as u32;
+        let startup_time = (startup_total_seconds % SECONDS_PER_DAY as u64) as u32;
+        
+        (startup_time, startup_date)
+    }
+
     pub fn update_date(&mut self, date: u32) {
         info!(
             "[time] updated reference date from {} to ({}) to {} ({})", 

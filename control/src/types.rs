@@ -37,6 +37,8 @@ pub const SECTOR_CONTAINER_START: usize = 51; // 1 block
 pub const SECTOR_BLOCK_START: usize = 0;
 pub const CONFIG_CONTAINER_START: usize = 51; // 1 block
 pub const CONFIG_BLOCK_START: usize = 1;
+pub const EVENTLOG_CONTAINER_START: usize = 51; // 1 block
+pub const EVENTLOG_BLOCK_START: usize = 2;
 
 pub const BURST_SIZE: usize = 64; // Samples per burst
 pub const BIN_BURST_SIZE: usize = 240;  // Burst per bin 
@@ -51,10 +53,171 @@ pub type Sample = u32;
 pub type Burst = Vec<Sample, BURST_SIZE>;
 pub type Bin = Vec<Burst, BIN_BURST_SIZE>;
 
+pub const EVENTS_HEADER_SIZE: usize = 4 + 4;
+pub const MAX_EVENTS: usize = 32;
+pub const EVENT_SIZE: usize = 9;
+pub const EVENTLOG_SIZE: usize = EVENTS_HEADER_SIZE + (MAX_EVENTS*EVENT_SIZE);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum EventType {
+    Empty = 0,
+    Boot = 1
+}
+
+impl From<u8> for EventType {
+    fn from(event_type: u8) -> Self {
+        match event_type {
+            1 => EventType::Boot,
+            _ => EventType::Empty
+        }
+    }
+}
+
+pub trait EventCoder {
+    fn to_bytes(&self) -> [u8; EVENT_SIZE];
+    fn from_bytes(bytes: &[u8; EVENT_SIZE]) -> Option<Self> where Self: Sized;
+}
+
+#[derive(Debug, Clone)]
+pub struct BootEvent {
+    pub time: u32,
+    pub date: u32,
+}
+
+const _: () = assert!(core::mem::size_of::<BootEvent>() <= EVENT_SIZE - 1);
+
+impl BootEvent {
+    pub fn new(time: u32, date: u32) -> Self {
+        Self { time, date }
+    }
+}
+
+impl EventCoder for BootEvent {
+    fn to_bytes(&self) -> [u8; EVENT_SIZE] {
+        let mut buf = [0u8; EVENT_SIZE];
+        buf[0] = EventType::Boot as u8;
+        buf[1..5].copy_from_slice(&self.time.to_le_bytes());
+        buf[5..9].copy_from_slice(&self.date.to_le_bytes());
+        buf
+    }
+
+    fn from_bytes(data: &[u8; EVENT_SIZE]) -> Option<Self> {
+        if data[0] != 1 { return None; }
+        Some(Self {
+            time: u32::from_le_bytes(data[1..5].try_into().ok()?),
+            date: u32::from_le_bytes(data[5..9].try_into().ok()?)
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Event {
+    Boot(BootEvent),
+}
+
+impl From<BootEvent> for Event {
+    fn from(e: BootEvent) -> Self {
+        Event::Boot(e)
+    }
+}
+
+impl Event {
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            Event::Boot(_) => "BOOT",
+        }
+    }
+
+    pub fn to_bytes(&self) -> [u8; EVENT_SIZE] {
+        match self {
+            Event::Boot(e) => e.to_bytes(),
+        }
+    }
+
+    pub fn from_bytes(data: &[u8; EVENT_SIZE]) -> Option<Self> {
+        match EventType::from(data[0]) {
+            EventType::Boot => BootEvent::from_bytes(data).map(Event::Boot),
+            EventType::Empty => None,
+        }
+    }
+}
+
+pub struct EventLog {
+    pub events: Vec<Event, MAX_EVENTS>,
+    changed: bool,
+}
+
+impl EventLog {
+    pub fn new() -> Self {
+        Self {
+            events: Vec::new(),
+            changed: false,
+        }
+    }
+
+    pub fn set_changed(&mut self, changed: bool) {
+        self.changed = changed;
+    }
+
+    pub fn has_changed(&self) -> bool {
+        self.changed
+    }
+
+    pub fn clear(&mut self) {
+        self.events.clear();
+        self.changed = true;
+    }
+
+    pub fn len(&self) -> usize {
+        self.events.len()
+    }
+
+    pub fn push<T: Into<Event>>(&mut self, event: T) {
+        let event_enum = event.into();
+        if self.events.is_full() {
+            self.events.remove(0);
+        }
+        self.events.push(event_enum).expect("Should fit");
+        self.changed = true;
+    }
+
+    pub fn to_bytes(&self) -> [u8; EVENTLOG_SIZE] {
+        let mut data = [0u8; EVENTLOG_SIZE];
+        let num_events = self.events.len() as u32;
+        data[0..4].copy_from_slice("ELOG".as_bytes());
+        data[4..8].copy_from_slice(&num_events.to_le_bytes());
+
+        for (i, event) in self.events.iter().enumerate() {
+            let offset = EVENTS_HEADER_SIZE + (i * EVENT_SIZE);
+            data[offset..offset + EVENT_SIZE].copy_from_slice(&event.to_bytes());
+        }
+        data
+    }
+
+    pub fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < EVENTLOG_SIZE || &data[0..4] != b"ELOG" {
+            return None;
+        }
+
+        let mut log = Self { events: Vec::new(), changed: false };
+        let num_events = core::cmp::min(u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize, MAX_EVENTS);
+        for i in 0..num_events {
+            let offset = EVENTS_HEADER_SIZE + (i as usize * EVENT_SIZE);
+            let event_data: &[u8; EVENT_SIZE] = data[offset..offset + EVENT_SIZE].try_into().ok()?;
+            
+            if let Some(event) = Event::from_bytes(event_data) {
+                log.events.push(event).expect("Should fit");
+            }
+        }
+        Some(log)
+    }
+}
+
 pub const MID_TIMES_HEADER: usize = 4;
 pub const MID_TIMES_SIZE: usize = MAX_MIDPOINTS * 4;
 pub const CONFIG_HEADER_SIZE: usize = 4 ;
-pub const CONFIG_SIZE: usize = CONFIG_HEADER_SIZE + 18 * 4 + MID_TIMES_SIZE + MID_TIMES_HEADER;
+pub const CONFIG_SIZE: usize = CONFIG_HEADER_SIZE + 17 * 4 + MID_TIMES_SIZE + MID_TIMES_HEADER;
 
 #[derive(Clone)]
 pub struct Config {
@@ -79,7 +242,6 @@ pub struct Config {
     pub bins_per_sector: u32,
     pub seconds_per_bin: u32,
 
-    pub num_send_measurements: u32,
     pub measure_timeout: u32,
 
     pub sector_mid_times: Vec<u32, MAX_MIDPOINTS>,
@@ -133,7 +295,6 @@ impl Config {
 
         push_4bytes(self.bins_per_sector.to_le_bytes());
         push_4bytes(self.seconds_per_bin.to_le_bytes());
-        push_4bytes(self.num_send_measurements.to_le_bytes());
         push_4bytes(self.measure_timeout.to_le_bytes());
 
         push_4bytes((self.sector_mid_times.len() as u32).to_le_bytes());
@@ -179,7 +340,6 @@ impl Config {
 
             bins_per_sector: u32::from_le_bytes(next_4bytes()),
             seconds_per_bin: u32::from_le_bytes(next_4bytes()),
-            num_send_measurements: u32::from_le_bytes(next_4bytes()),
             measure_timeout: u32::from_le_bytes(next_4bytes()),
 
             sector_mid_times: {
@@ -249,7 +409,6 @@ impl Default for Config {
             bins_per_sector: 3,
             seconds_per_bin: 240*5,
 
-            num_send_measurements: 3,
             measure_timeout: 60,
         }
     }
@@ -538,6 +697,10 @@ impl Sector {
 
     pub fn get_start_time(&self) -> u32 {
         self.start_time
+    }
+
+    pub fn get_start_day(&self) -> u32 {
+        self.start_day
     }
 
     pub fn get_end_time(&self) -> u32 {
