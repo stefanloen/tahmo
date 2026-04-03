@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAHMO CSV Analytics - Full Suite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: #1e293b; }
+        .chart-wrapper { height: 350px; width: 100%; }
+        input[type=range] { width: 100%; accent-color: #2563eb; cursor: pointer; }
+        .val-mono { font-family: 'ui-monospace', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace; }
+    </style>
+</head>
+<body class="p-4 md:p-10">
+
+<div class="max-w-6xl mx-auto space-y-8">
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+            <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Telemetry Analytics</h1>
+            <p class="text-slate-500 text-sm">Visual inspection and raw data extraction</p>
+        </div>
+        <div class="flex gap-3">
+            <a href="index.html" class="inline-flex items-center px-6 py-3 text-sm font-bold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
+                ← Raw value parser
+            </a>
+            <input type="file" id="csvFile" class="hidden" accept=".csv">
+            <label for="csvFile" class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold cursor-pointer hover:bg-blue-700 transition shadow-xl shadow-blue-100">
+                Upload CSV
+            </label>
+        </div>
+    </header>
+
+    <section id="rangeSelector" class="hidden bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+        <div class="flex justify-between items-center">
+            <h3 class="text-xs font-black uppercase tracking-widest text-slate-400">View Window</h3>
+            <span id="rangeDisplay" class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100"></span>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Start Index</label>
+                <input type="range" id="rangeStart" value="0" min="0" step="1">
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">End Index</label>
+                <input type="range" id="rangeEnd" value="100" min="0" step="1">
+            </div>
+        </div>
+    </section>
+
+    <main id="dashboard" class="hidden space-y-8">
+        
+        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <h3 class="text-xs font-black uppercase text-blue-500 mb-6 flex items-center gap-2">
+                <span class="w-2 h-2 bg-blue-500 rounded-full"></span> Battery (mV)
+            </h3>
+            <div class="chart-wrapper"><canvas id="battChart"></canvas></div>
+        </div>
+
+        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <h3 class="text-xs font-black uppercase text-orange-500 mb-6 flex items-center gap-2">
+                <span class="w-2 h-2 bg-orange-500 rounded-full"></span> Temperature (°C)
+            </h3>
+            <div class="chart-wrapper"><canvas id="tempChart"></canvas></div>
+        </div>
+
+        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <h3 class="text-xs font-black uppercase text-emerald-500 mb-6 flex items-center gap-2">
+                <span class="w-2 h-2 bg-emerald-500 rounded-full"></span> Rel. Height (m)
+            </h3>
+            <div class="chart-wrapper"><canvas id="rhChart"></canvas></div>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                <h2 class="font-bold text-slate-800">Raw Decoded Values</h2>
+                <button onclick="exportToCSV()" class="text-xs bg-white border border-slate-200 px-3 py-1 rounded-lg hover:bg-slate-50 font-medium">Export Visible to CSV</button>
+            </div>
+            <div class="overflow-x-auto max-h-[500px]">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-white sticky top-0 shadow-sm text-[10px] uppercase text-slate-400 font-black">
+                        <tr>
+                            <th class="p-4 border-b">Time (UTC)</th>
+                            <th class="p-4 border-b">Thing</th>
+                            <th class="p-4 border-b">Batt (mV)</th>
+                            <th class="p-4 border-b">Temp (°C)</th>
+                            <th class="p-4 border-b">RH Mean (m)</th>
+                            <th class="p-4 border-b">Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTable" class="text-sm divide-y divide-slate-50"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    const MIN_TEMP_C = -30.0, MAX_TEMP_C = 80.0;
+    const MIN_BATT_MV = 2000, MAX_BATT_MV = 5000;
+    const MAX_REL_HEIGHT = 20.0;
+    const HEADER_OFFSET = 7, MEAS_SIZE = 6;
+
+    let allRecords = [];
+    let charts = {};
+    let filteredRecords = [];
+
+    const startInput = document.getElementById('rangeStart');
+    const endInput = document.getElementById('rangeEnd');
+    const rangeDisplay = document.getElementById('rangeDisplay');
+    const tbody = document.getElementById('dataTable');
+
+    function mapValue(val, inMax, outMin, outMax) {
+        if (val <= 0) return outMin;
+        if (val >= inMax) return outMax;
+        return outMin + (val / inMax) * (outMax - outMin);
+    }
+
+    function hexToBytes(hex) {
+        hex = hex.replace(/\s+/g, '').replace(/0x/g, '');
+        if (hex.length % 2 !== 0) return null;
+        const bytes = new Uint8Array(hex.length / 2);
+        for (let i = 0; i < hex.length; i += 2) { bytes[i / 2] = parseInt(hex.substr(i, 2), 16); }
+        return bytes;
+    }
+
+    function decodePayload(hex) {
+        const bytes = hexToBytes(hex);
+        if (!bytes || bytes.length < 7) return null;
+        const battery = Math.round(mapValue(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
+        const temp = parseFloat(mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2));
+        const measCount = bytes[6];
+        let measurements = [];
+        for (let j = 0; j < measCount; j++) {
+            let i = HEADER_OFFSET + (j * MEAS_SIZE);
+            if (i + MEAS_SIZE > bytes.length) break;
+            const rawRelMean = bytes[i+1] | (bytes[i+2] << 8);
+            measurements.push({ rh: parseFloat(mapValue(rawRelMean, 65535, 0, MAX_REL_HEIGHT).toFixed(3)) });
+        }
+        return { battery, temp, measurements, raw: hex };
+    }
+
+    document.getElementById('csvFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) { processInitialData(results.data); }
+        });
+    });
+
+    function processInitialData(rows) {
+        allRecords = [];
+        rows.forEach(row => {
+            const payload = row.Payload || row.payload || "";
+            const timeStr = row["At (UTC)"] || row.time || row.At;
+            const decoded = decodePayload(payload);
+            if (decoded && timeStr) {
+                allRecords.push({
+                    timestamp: new Date(timeStr),
+                    timeLabel: timeStr,
+                    thing: row.Thing || "N/A",
+                    ...decoded
+                });
+            }
+        });
+
+        allRecords.sort((a, b) => a.timestamp - b.timestamp);
+
+        if (allRecords.length > 0) {
+            startInput.max = allRecords.length - 1;
+            endInput.max = allRecords.length - 1;
+            startInput.value = 0;
+            endInput.value = allRecords.length - 1;
+            document.getElementById('rangeSelector').classList.remove('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            updateSelection();
+        }
+    }
+
+    function updateSelection() {
+        let start = parseInt(startInput.value);
+        let end = parseInt(endInput.value);
+
+        if (start >= end) {
+            if (this === startInput) endInput.value = start + 1;
+            else startInput.value = end - 1;
+            start = parseInt(startInput.value);
+            end = parseInt(endInput.value);
+        }
+
+        filteredRecords = allRecords.slice(start, end + 1);
+        rangeDisplay.innerText = `INDEX ${start} — ${end} (${filteredRecords.length} TOTAL)`;
+
+        const labels = filteredRecords.map(r => {
+            const d = r.timestamp;
+            return `${d.getDate()}/${d.getMonth()+1} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
+        });
+
+        drawChart('battChart', labels, filteredRecords.map(r => r.battery), '#3b82f6');
+        drawChart('tempChart', labels, filteredRecords.map(r => r.temp), '#f97316');
+        drawChart('rhChart', labels, filteredRecords.map(r => r.measurements[0]?.rh || 0), '#10b981');
+
+        tbody.innerHTML = filteredRecords.map(r => `
+            <tr class="hover:bg-slate-50/80 transition-colors">
+                <td class="p-4 val-mono text-[10px] text-slate-500">${r.timeLabel}</td>
+                <td class="p-4 font-bold text-slate-700">${r.thing}</td>
+                <td class="p-4 font-semibold text-blue-600">${r.battery}</td>
+                <td class="p-4 font-semibold text-orange-600">${r.temp}</td>
+                <td class="p-4 font-semibold text-emerald-600">${r.measurements[0]?.rh || '0'}</td>
+                <td class="p-4 text-[9px] val-mono text-slate-300 truncate max-w-[150px]" title="${r.raw}">${r.raw}</td>
+            </tr>
+        `).reverse().join('');
+    }
+
+    function drawChart(id, labels, data, color) {
+        if (charts[id]) charts[id].destroy();
+        const ctx = document.getElementById(id).getContext('2d');
+        charts[id] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: data,
+                    borderColor: color,
+                    backgroundColor: color + '10',
+                    fill: true,
+                    tension: 0.1,
+                    borderWidth: 2,
+                    pointRadius: data.length > 300 ? 0 : 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { maxTicksLimit: 10, font: { size: 10 } }, grid: { display: false } },
+                    y: { ticks: { font: { size: 10, family: 'monospace' } }, grid: { color: '#f1f5f9' } }
+                }
+            }
+        });
+    }
+
+    function exportToCSV() {
+        let csvContent = "data:text/csv;charset=utf-8,Time,Thing,Battery_mV,Temp_C,RH_m,Payload\n" 
+            + filteredRecords.map(r => `${r.timeLabel},${r.thing},${r.battery},${r.temp},${r.measurements[0]?.rh || 0},${r.raw}`).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "tahmo_filtered_data.csv");
+        document.body.appendChild(link);
+        link.click();
+    }
+
+    startInput.addEventListener('input', updateSelection);
+    endInput.addEventListener('input', updateSelection);
+</script>
+
+</body>
+</html>
