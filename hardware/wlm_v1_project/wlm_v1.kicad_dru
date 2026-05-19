@@ -1,0 +1,13 @@
+(version 1)
+(rule Copper_to_edge_clearance_1
+	(constraint edge_clearance (min 0.4mm))
+)
+(rule Minimum_clearance_1
+	(constraint clearance (min 0.176mm))
+)
+(rule Minimum_connection_width_1
+	(constraint connection_width (min 0.1mm))
+)
+(rule Minimum_annular_width_1
+	(constraint annular_width (min 0.155mm))
+)
