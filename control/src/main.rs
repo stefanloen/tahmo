@@ -148,7 +148,9 @@ async fn main(spawner: Spawner) {
         adc);
     
     // LED peripherals
-    let led: Output<'_> = Output::new(p.PIN_28, Level::High);
+    let led_red: Output<'_> = Output::new(p.PIN_27, Level::Low);
+    let led_green: Output<'_> = Output::new(p.PIN_28, Level::Low);
+    let led_blue: Output<'_> = Output::new(p.PIN_29, Level::Low);
 
     // GNSS peripherals
     let mut gnss_uart_config = uart::Config::default();
@@ -275,7 +277,7 @@ async fn main(spawner: Spawner) {
         error!("Failed to spawn control task: {}", result.unwrap_err());
     }
 
-    let result = spawner.spawn(led_blink(led));
+    let result = spawner.spawn(led_blink(led_red, led_green, led_blue));
 
     if result.is_err() {
         error!("Failed to spawn LED blink task: {}", result.unwrap_err());
@@ -295,13 +297,21 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn led_blink(mut led: Output<'static>) {
+async fn led_blink(mut led_red: Output<'static>, mut led_green: Output<'static>, mut led_blue: Output<'static> ) {
     info!("[led_]: starting");
-    loop {
+    let mut leds = [led_red, led_green, led_blue];
+
+    for led in leds.iter_mut() {
         led.set_high();
-        Timer::after_millis(25).await;
+        Timer::after_millis(333).await;
         led.set_low();
+    }
+
+    loop {
+        Timer::after_millis(5000).await;
+        leds[1].set_high();
         Timer::after_millis(25).await;
+        leds[1].set_low();
     }
 }
 
