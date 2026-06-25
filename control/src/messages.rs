@@ -99,6 +99,10 @@ pub enum IntReqMsg{
         voltage: u32
     },
     BatVoltFail,
+    TempSuccess {
+        temp: f32
+    },
+    TempFail,
     ConstellationState {
         signal_bars_max: u8,
         signal_level_max: i8,
@@ -117,6 +121,7 @@ pub enum IntReqMsg{
 
 pub enum IntResMsg{
     GetBatVolt,
+    GetTemp,
     GetConstellationState,
     GetConfig,
     SetConfig {

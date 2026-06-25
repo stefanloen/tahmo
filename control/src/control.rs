@@ -400,6 +400,16 @@ pub async fn task_control(
                             }
                         }
                     }
+                    IntResMsg::GetTemp => {
+                        match chip_c {
+                            Some(temp) => {
+                                int_request_channel.send(IntReqMsg::TempSuccess { temp: (temp) }).await;
+                            },
+                            _ => {
+                                int_request_channel.send(IntReqMsg::TempFail).await;
+                            }
+                        }
+                    }
                     IntResMsg::GetConstellationState => {
                         // Request constellation state from the comms task
                         // TODO: Check if comms is actually available
