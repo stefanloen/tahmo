@@ -129,9 +129,9 @@ async fn main(spawner: Spawner) {
     let interface = Interface::new(usb_context.class);
 
     // Battery peripherals
-    let pin_bat_stat1 = Input::new(p.PIN_12, Pull::None);
-    let pin_bat_stat2 = Input::new(p.PIN_13, Pull::None);
-    let pin_bat_CE = Output::new(p.PIN_6, Level::Low);
+    let pin_bat_low_bat = Input::new(p.PIN_11, Pull::Up);
+    let pin_bat_bq_powergood = Input::new(p.PIN_12, Pull::None);
+    let pin_bat_bq_status = Input::new(p.PIN_13, Pull::None);
 
     let adc: adc::Adc<'_, adc::Async> = adc::Adc::new(p.ADC, Irqs, adc::Config::default());
     let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_26, Pull::None);
@@ -140,9 +140,9 @@ async fn main(spawner: Spawner) {
     let pin_temp = adc::Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
 
     let battery = Battery::new(
-        pin_bat_stat1, 
-        pin_bat_stat2, 
-        pin_bat_CE, 
+        pin_bat_low_bat, 
+        pin_bat_bq_powergood, 
+        pin_bat_bq_status, 
         pin_bat_voltage, 
         pin_temp,
         adc);

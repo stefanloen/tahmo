@@ -79,6 +79,7 @@
                 <div><label>Temperature</label><div class="val" id="out-temp">-</div></div>
                 <div><label>Lat digits</label><div class="val" id="out-lat">-</div></div>
                 <div><label>Long digits</label><div class="val" id="out-lon">-</div></div>
+                <div><label>Low Battery</label><div class="val" id="out-batlow">-</div></div>
                 <div><label>Session Boots</label><div class="val" id="out-boots">-</div></div>
             </div>
             <div class="pill-container" id="out-charge"></div>
@@ -137,7 +138,8 @@
                 bytes = new Uint8Array(input.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
             }
 
-            if (bytes.length < 7) throw new Error(`Packet too short (${bytes.length} bytes). Need at least 7 for metadata.`);
+            // Expanded metadata footprint from 7 to 11 bytes
+            if (bytes.length < 11) throw new Error(`Packet too short (${bytes.length} bytes). Need at least 11 for metadata.`);
 
             render(bytes);
             output.style.display = 'block';
@@ -153,22 +155,32 @@
         const temp = mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2);
         const latDigits = bytes[2];
         const lonDigits = bytes[3];
-        const chargeByte = bytes[4];
-        const bootCount = bytes[5];
-        const measCount = bytes[6];
+        
+        // Extract 4-byte charge state sequence
+        const faultByte = bytes[4];
+        const noInputByte = bytes[5];
+        const chargingByte = bytes[6];
+        const standbyByte = bytes[7];
+
+        // Read explicit flags and metrics shifts
+        const batLowFlag = bytes[8];
+        const bootCount = bytes[9];
+        const measCount = bytes[10];
 
         document.getElementById('out-batt').innerText = battery + " mV";
         document.getElementById('out-temp').innerText = temp + " °C";
         document.getElementById('out-lat').innerText = latDigits;
         document.getElementById('out-lon').innerText = lonDigits;
+        document.getElementById('out-batlow').innerText = batLowFlag === 1 ? "True (Low)" : "False (OK)";
         document.getElementById('out-boots').innerText = bootCount;
         document.getElementById('out-count').innerText = `(${measCount})`;
 
+        // Updated text targets to match the updated ChargeState enum design definitions
         const states = [
-            { n: "Completed", v: (chargeByte >> 6) & 0b11 },
-            { n: "Charging", v: (chargeByte >> 4) & 0b11 },
-            { n: "Recoverable", v: (chargeByte >> 2) & 0b11 },
-            { n: "Nonrecoverable", v: (chargeByte >> 0) & 0b11 }
+            { n: "Fault", v: faultByte },
+            { n: "NoInput", v: noInputByte },
+            { n: "Charging", v: chargingByte },
+            { n: "Standby", v: standbyByte }
         ];
         const totalChargePoints = states.reduce((a, b) => a + b.v, 0);
         
@@ -180,7 +192,8 @@
         const list = document.getElementById('measurementsList');
         list.innerHTML = '';
         
-        const HEADER_OFFSET = 7;
+        // Offset boundary updated to match the metadata structure changes
+        const HEADER_OFFSET = 11;
         const MEAS_SIZE = 6;
 
         for (let j = 0; j < measCount; j++) {

@@ -100,7 +100,8 @@ pub async fn task_control(
 
     let mut battery_mv: Option<u32> = None;
     let mut chip_c: Option<f32> = None;
-    let mut charge_state_fraction: u8 = 0;
+    let mut charge_state_fraction: [u8; 4] = [0,0,0,0];
+    let mut bat_low = false;
 
     let mut event_log: EventLog;
     let event_log_storage = EventLogStorage::new();
@@ -198,6 +199,7 @@ pub async fn task_control(
                     battery_mv: battery_mv, 
                     temp_c: chip_c,
                     charge_state_fraction: charge_state_fraction,
+                    bat_low: bat_low,
                     events: event_log.events.clone()
                 }).await;
             }
@@ -376,8 +378,9 @@ pub async fn task_control(
                             info!("[cont] Temperature status set to Ready");
                         }
                     },
-                    MonResMsg::ChargeStateFraction { fraction } => {
+                    MonResMsg::ChargeState { fraction , bat_low: bat_low_in} => {
                         charge_state_fraction = fraction;
+                        bat_low = bat_low_in;
                         if charge_state_status == ChargeStateStatus::NotReady {
                             charge_state_status = ChargeStateStatus::Ready;
                             info!("[cont] Charge state status set to Ready");
