@@ -40,7 +40,7 @@
             <span id="rangeDisplay" class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100"></span>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-500 uppercase">Start Index</label>
                 <input type="range" id="rangeStart" value="0" min="0" step="1">
@@ -48,6 +48,12 @@
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-500 uppercase">End Index</label>
                 <input type="range" id="rangeEnd" value="100" min="0" step="1">
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Filter by Thing</label>
+                <select id="thingSelect" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-500 transition-colors">
+                    <option value="all">All Things</option>
+                </select>
             </div>
         </div>
     </section>
@@ -88,8 +94,8 @@
                             <th class="p-4 border-b">Thing</th>
                             <th class="p-4 border-b">Batt (mV)</th>
                             <th class="p-4 border-b">Temp (°C)</th>
-                            <th class="p-4 border-b">Bat</th>
-                            <th class="p-4 border-b">F / N / C / S Fractions</th>
+                            <th class="p-4 border-b">Bat Low</th>
+                            <th class="p-4 border-b">F / No / Ch / St Fractions</th>
                             <th class="p-4 border-b">RH Mean (m)</th>
                             <th class="p-4 border-b">Payload</th>
                         </tr>
@@ -113,6 +119,7 @@
 
     const startInput = document.getElementById('rangeStart');
     const endInput = document.getElementById('rangeEnd');
+    const thingSelect = document.getElementById('thingSelect');
     const rangeDisplay = document.getElementById('rangeDisplay');
     const tbody = document.getElementById('dataTable');
 
@@ -137,7 +144,6 @@
         const battery = Math.round(mapValue(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
         const temp = parseFloat(mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2));
         
-        // Extract individual 4-byte timeline values
         const fault = bytes[4];
         const noInput = bytes[5];
         const charging = bytes[6];
@@ -185,6 +191,16 @@
         allRecords.sort((a, b) => a.timestamp - b.timestamp);
 
         if (allRecords.length > 0) {
+            // Extract unique 'Thing' properties to fill our dropdown option list dynamically
+            thingSelect.innerHTML = '<option value="all">All Things</option>';
+            const uniqueThings = [...new Set(allRecords.map(r => r.thing))];
+            uniqueThings.forEach(thing => {
+                const opt = document.createElement('option');
+                opt.value = thing;
+                opt.innerText = thing;
+                thingSelect.appendChild(opt);
+            });
+
             startInput.max = allRecords.length - 1;
             endInput.max = allRecords.length - 1;
             startInput.value = 0;
@@ -206,8 +222,14 @@
             end = parseInt(endInput.value);
         }
 
-        filteredRecords = allRecords.slice(start, end + 1);
-        rangeDisplay.innerText = `INDEX ${start} — ${end} (${filteredRecords.length} TOTAL)`;
+        // Apply slice window filtering first
+        let slicedRecords = allRecords.slice(start, end + 1);
+        
+        // Filter elements based on selection values
+        const selectedThing = thingSelect.value;
+        filteredRecords = slicedRecords.filter(r => selectedThing === 'all' || r.thing === selectedThing);
+        
+        rangeDisplay.innerText = `INDEX ${start} — ${end} (${filteredRecords.length} VISIBLE)`;
 
         const labels = filteredRecords.map(r => {
             const d = r.timestamp;
@@ -279,6 +301,7 @@
 
     startInput.addEventListener('input', updateSelection);
     endInput.addEventListener('input', updateSelection);
+    thingSelect.addEventListener('change', updateSelection);
 </script>
 
 </body>
