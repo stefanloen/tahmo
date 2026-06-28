@@ -1,0 +1,135 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP NE555DR
+D Single Precision Timer
+K
+F http://www.ti.com/lit/ds/symlink/ne555.pdf
+$ENDCMP
+#
+$CMP 219320-0001
+D Universal Serial Bus (USB) Shielded I/O Receptacle, Type C, Vertical, Surface Mount, Height 8.8mm, 16 Circuits, Gold (Au) Flash Plating
+K
+F https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/salesdrawingpdf/219/219320/2193200001_sd.pdf?inline
+$ENDCMP
+#
+$CMP RP2350A-CT
+D RASPBERRY-PI - RP2350A-CT - MCU, 32 bit, ARM Cortex-M33F, 150 MHz, 520 KB RAM, QFN-60
+K
+F https://datasheets.raspberrypi.com/rp2350/rp2350-datasheet.pdf
+$ENDCMP
+#
+$CMP W25Q32RVXHJQ
+D 32Mb Serial NOR Flash 133MHz SON8
+K
+F https://www.winbond.com/hq/search-resource-file.jsp?partNo=W25Q32RVXHJQ&type=datasheet
+$ENDCMP
+#
+$CMP PTS810SJK250SMTR_LFS
+D TACTILE SWITCH, SPST, 0.05A, 16VDC, SMD
+K
+F https://www.ckswitches.com/media/1476/pts810.pdf
+$ENDCMP
+#
+$CMP ABM8-272-T3
+D Crystal, 12 MHz, SMD, 3.2mm x 2.5mm, 30 ppm, 10 pF, 30 ppm, ABM8 Series
+K
+F https://abracon.com/datasheets/ABM8-272-T3.pdf
+$ENDCMP
+#
+$CMP TPS61032PWPR
+D TEXAS INSTRUMENTS - TPS61032PWPR - IC, SYNC BOOST CONV, 600KHZ, HTSSOP-16
+K
+F http://www.ti.com/general/docs/lit/getliterature.tsp?genericPartNumber=TPS61032&&fileType=pdf
+$ENDCMP
+#
+$CMP CDRH124NP-6R8MC
+D Fixed Inductors 6.8uH 4.9A 20% SMD PWR INDUCTOR
+K
+F https://static6.arrow.com/aropdfconversion/4ca8553fddb2f58a2124ec5037a7a53f9a94a577/120303703554903cdrh124.pdf
+$ENDCMP
+#
+$CMP RT6150B-33GQW
+D IC REG BCK BST 3.3V 800MA 10WDFN
+K
+F https://datasheet.octopart.com/RT6150B-33GQW-Richtek-datasheet-82510503.pdf
+$ENDCMP
+#
+$CMP DMP2035U-7
+D Diodes Inc DMP2035U-7 P-channel MOSFET Transistor, 3.6 A, -20 V, 3-Pin SOT-23
+K
+F https://www.diodes.com//assets/Datasheets/DMP2035U.pdf
+$ENDCMP
+#
+$CMP MBRX120LF-TP
+D Small Signal Schottky Diodes
+K
+F https://www.mccsemi.com/pdf/Products/MBRX120LF(SOD-123).pdf
+$ENDCMP
+#
+$CMP TMP390A3DRLR
+D Thermostats Ultra-small, dual-channel (hot & cold trip), 0.5- uA, resistor-programmable temperature switch 6-SOT-5X3 -55 to 130
+K
+F https://www.ti.com/lit/gpn/TMP390
+$ENDCMP
+#
+$CMP LTC2960IDC-3#TRMPBF
+D Supervisory Circuits 36V Nano-Current Two Input Voltage Monitor (ADJ/IN+, 200ms, Active Pull-up, Logic Supply)
+K
+F https://www.mouser.in/datasheet/2/609/2960fa-1271337.pdf
+$ENDCMP
+#
+$CMP SLG59M309V
+D The SLG59M309V is a 7.8m 4A single-channel load switch that is able to switch 1 to 5.5V power rails. The product is packaged in an ultra-small 1.5mmx2.0mm package.
+K
+F https://www.renesas.com/us/en/products/power-power-management/power-supply-support/hot-swap-ideal-diodeoring-fet-controllers/load-switches/slg59m309v-greenfet-single-n-channel-load-switch
+$ENDCMP
+#
+$CMP TXU0202DCUR
+D Translation - Voltage Levels Two channel fixed-direction level shifter with channels in opposite direction
+K
+F https://www.ti.com/product/ja-jp/TXU0202
+$ENDCMP
+#
+$CMP TPL5010DDCT
+D uPower System Timer w/ Watchdog TSOT23-6 Texas Instruments TPL5010DDCT, Precision Timer, 1.8  5.5 V, 6-Pin SOT-23
+K
+F http://www.ti.com/lit/ds/symlink/tpl5010.pdf
+$ENDCMP
+#
+$CMP TPS61023DRLR
+D Switching Voltage Regulators 3-A boost converter with 0.5-V ultra-low input voltage 6-SOT-5X3 -40 to 125
+K
+F http://www.ti.com/lit/ds/symlink/tps61023.pdf
+$ENDCMP
+#
+$CMP 200AWMSP1T2A1M2RE
+D TOGGLE, 0.4VA, 20VAC/VDC SPDT, On-On Through Hole
+K
+F https://configured-product-images.s3.amazonaws.com/2D/specs/200AWMSP1T2A1M2RE.pdf
+$ENDCMP
+#
+$CMP AOTA-B201610S3R3-101-T
+D Power Inductors - SMD IND 3.3uH
+K
+F https://abracon.com/datasheets/AOTA-B201610S3R3-101-T.pdf
+$ENDCMP
+#
+$CMP F931C227MNC
+D 220F Molded Tantalum Capacitors 16V 2917 (7343 Metric) 700 mOhm
+K
+F http://datasheets.avx.com/F93.pdf
+$ENDCMP
+#
+$CMP TR3E227M016C0100
+D Solid Tantalum Surface Mount Chip Capacitors TANTAMOUNT(TM), Molded Case, Low ESR
+K
+F http://www.vishay.com/doc?40080
+$ENDCMP
+#
+$CMP 74479276222C
+D WE-PMCI Power Molded Chip Inductor Size 201610; L = 2.2 H; IR = 2.1 A; Isat = 2.8 A; RDC = 130 m
+K
+F https://www.we-online.com/catalog/datasheet/74479276222C.pdf
+$ENDCMP
+#
+#End Doc Library

@@ -12,7 +12,6 @@ use embassy_rp::clocks::ClockConfig;
 use embassy_rp::gpio;
 use embassy_rp::gpio::Input;
 use embassy_rp::uart;
-use embassy_rp::watchdog::Watchdog;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Duration;
 use embassy_time::Instant;
@@ -123,11 +122,6 @@ async fn main(spawner: Spawner) {
     let start = Instant::now();
 
     info!("[main] clock freq: {} MHz", clk_sys_freq() / 1_000_000);
-
-    // Watchdog
-    let mut wdg = Watchdog::new(p.WATCHDOG);
-    wdg.pause_on_debug(false);
-    wdg.start(Duration::from_secs(16));
     
     // USB
     let usb_driver = Driver::new(p.USB, Irqs);
@@ -135,41 +129,43 @@ async fn main(spawner: Spawner) {
     let interface = Interface::new(usb_context.class);
 
     // Battery peripherals
-    let pin_bat_stat1 = Input::new(p.PIN_10, Pull::None);
-    let pin_bat_stat2 = Input::new(p.PIN_8, Pull::None);
-    let pin_bat_CE = Output::new(p.PIN_6, Level::Low);
+    let pin_bat_low_bat = Input::new(p.PIN_11, Pull::Up);
+    let pin_bat_bq_powergood = Input::new(p.PIN_12, Pull::None);
+    let pin_bat_bq_status = Input::new(p.PIN_13, Pull::None);
 
     let adc: adc::Adc<'_, adc::Async> = adc::Adc::new(p.ADC, Irqs, adc::Config::default());
-    let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_28, Pull::None);
+    let pin_bat_voltage: adc::Channel<'_> = adc::Channel::new_pin(p.PIN_26, Pull::None);
 
     //Temp sensor
     let pin_temp = adc::Channel::new_temp_sensor(p.ADC_TEMP_SENSOR);
 
     let battery = Battery::new(
-        pin_bat_stat1, 
-        pin_bat_stat2, 
-        pin_bat_CE, 
+        pin_bat_low_bat, 
+        pin_bat_bq_powergood, 
+        pin_bat_bq_status, 
         pin_bat_voltage, 
         pin_temp,
         adc);
     
     // LED peripherals
-    let led: Output<'_> = Output::new(p.PIN_25, Level::Low);
+    let led_red: Output<'_> = Output::new(p.PIN_27, Level::Low);
+    let led_green: Output<'_> = Output::new(p.PIN_28, Level::Low);
+    let led_blue: Output<'_> = Output::new(p.PIN_29, Level::Low);
 
     // GNSS peripherals
     let mut gnss_uart_config = uart::Config::default();
     gnss_uart_config.baudrate = GNSS_PRE_UART_BAUDRATE;
-    let gnss_uart = uart::Uart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, p.DMA_CH0, p.DMA_CH1, gnss_uart_config);
-    let pin_gnss_power = Output::new(p.PIN_18, Level::Low);
+    let gnss_uart = uart::Uart::new(p.UART0, p.PIN_16, p.PIN_17, Irqs, p.DMA_CH0, p.DMA_CH1, gnss_uart_config);
+    let pin_gnss_power = Output::new(p.PIN_15, Level::Low);
     let mut gnss_sensor = GNSSSensor::new(gnss_uart, pin_gnss_power);
 
     // Rockblock pheripherals
     let mut config_uart_rockblock = uart::Config::default();
     config_uart_rockblock.baudrate = ROCKBLOCK_UART_BAUDRATE;
-    let uart_rockblock = uart::Uart::new(p.UART0, p.PIN_0, p.PIN_1, Irqs, p.DMA_CH2, p.DMA_CH3, config_uart_rockblock);
-    let pin_rockblock_power = Output::new(p.PIN_20, Level::Low);
-    let pin_iridium_enable = Output::new(p.PIN_22, Level::Low);
-    let pin_iridium_status = gpio::Input::new(p.PIN_26, gpio::Pull::None);
+    let uart_rockblock = uart::Uart::new(p.UART1, p.PIN_4, p.PIN_5, Irqs, p.DMA_CH2, p.DMA_CH3, config_uart_rockblock);
+    let pin_rockblock_power = Output::new(p.PIN_7, Level::Low);
+    let pin_iridium_enable = Output::new(p.PIN_0, Level::Low);
+    let pin_iridium_status = gpio::Input::new(p.PIN_1, gpio::Pull::None);
     let mut rockblock = RockBlock9704::new(
         uart_rockblock,
         pin_rockblock_power,
@@ -185,7 +181,7 @@ async fn main(spawner: Spawner) {
     info!("[main] RockBlock powered off");
 
     // Dump pheripheral
-    let dump_pin = Input::new(p.PIN_15, gpio::Pull::Up);
+    let dump_pin = Input::new(p.PIN_25, gpio::Pull::Up);
 
     // Storage peripheral
     let storage = FlashStorage::new(p.FLASH, false);
@@ -193,13 +189,14 @@ async fn main(spawner: Spawner) {
         *(STORAGE.lock().await) = Some(storage);
     }
 
+    // Watchdog peripherals
+    let wdg_wake =  Input::new(p.PIN_19, gpio::Pull::Down);
+    let wdg_done = Output::new(p.PIN_20, Level::Low);
+
     info!("[main] initialized peripherals");
 
     info!("[main] starting watchdog feeder task");
-    static CELL: StaticCell<Watchdog> = StaticCell::new();
-    let wdg: &'static mut Watchdog = CELL.init(wdg);
-
-    let result = spawner.spawn(watchdog_feeder(wdg));
+    let result = spawner.spawn(watchdog_feeder(wdg_wake, wdg_done));
     if result.is_err() {
         error!("Failed to spawn watchdog feeder task: {}", result.unwrap_err());
     }
@@ -280,7 +277,7 @@ async fn main(spawner: Spawner) {
         error!("Failed to spawn control task: {}", result.unwrap_err());
     }
 
-    let result = spawner.spawn(led_blink(led));
+    let result = spawner.spawn(led_blink(led_red, led_green, led_blue));
 
     if result.is_err() {
         error!("Failed to spawn LED blink task: {}", result.unwrap_err());
@@ -300,22 +297,37 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn led_blink(mut led: Output<'static>) {
+async fn led_blink(mut led_red: Output<'static>, mut led_green: Output<'static>, mut led_blue: Output<'static> ) {
     info!("[led_]: starting");
-    loop {
+    let mut leds = [led_red, led_green, led_blue];
+
+    for led in leds.iter_mut() {
         led.set_high();
-        Timer::after_millis(25).await;
+        Timer::after_millis(333).await;
         led.set_low();
+    }
+
+    loop {
+        Timer::after_millis(5000).await;
+        leds[1].set_high();
         Timer::after_millis(25).await;
+        leds[1].set_low();
     }
 }
 
 #[embassy_executor::task]
-async fn watchdog_feeder(wdg: &'static mut Watchdog) {
+async fn watchdog_feeder(mut wake: Input<'static>, mut done: Output<'static>) {
     info!("[wdg_]: starting");
+    done.set_low();
+
     loop {
-        Timer::after(Duration::from_secs(1)).await;
-        wdg.feed();
+        Timer::after(Duration::from_millis(1000)).await;
+        done.set_high();
+        Timer::after(Duration::from_millis(1000)).await;
+        done.set_low();
+
+        wake.wait_for_high().await;
+        info!("[wdg_]: WAKE signal received from TPL5010");
     }
 }
 

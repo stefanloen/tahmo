@@ -50,7 +50,8 @@ pub enum CommReqMsg{
         config: Config,
         battery_mv: Option<u32>,
         temp_c: Option<f32>,
-        charge_state_fraction: u8,
+        charge_state_fraction: [u8; 4],
+        bat_low: bool,
         events: Vec<Event, MAX_EVENTS>
     },
     GetConstellationState
@@ -89,8 +90,10 @@ pub enum MonResMsg{
         temp_c: f32
     },
     TempFail,
-    ChargeStateFraction {
-        fraction: u8
+    ChargeState {
+        fraction: [u8; 4],
+        bat_low: bool,
+
     }
 }
 
@@ -99,6 +102,10 @@ pub enum IntReqMsg{
         voltage: u32
     },
     BatVoltFail,
+    TempSuccess {
+        temp: f32
+    },
+    TempFail,
     ConstellationState {
         signal_bars_max: u8,
         signal_level_max: i8,
@@ -117,6 +124,7 @@ pub enum IntReqMsg{
 
 pub enum IntResMsg{
     GetBatVolt,
+    GetTemp,
     GetConstellationState,
     GetConfig,
     SetConfig {

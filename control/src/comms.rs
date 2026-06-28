@@ -16,7 +16,7 @@ use crate::types::{Event, MAX_EVENTS, MAX_SECTORS, Measurement, NUM_MEASUREMENTS
 use crate::StorageType;
 
 const MEASUREMENT_PACKET_SIZE: usize = 6;
-const PACKET_METADATA_SIZE: usize = 6;
+const PACKET_METADATA_SIZE: usize = 10;
 const PACKET_MEASUREMENT_COUNT_SIZE: usize = 1;
 const MAX_MEASUREMENT_PACKETS: usize = 10;
 const PACKET_SIZE: usize = PACKET_METADATA_SIZE + PACKET_MEASUREMENT_COUNT_SIZE+ (MAX_MEASUREMENT_PACKETS * MEASUREMENT_PACKET_SIZE);
@@ -63,19 +63,21 @@ pub struct Packet {
     temp: u8,
     lat: u8,
     lon: u8,
-    charge_state_fraction: u8,
+    charge_state_fraction: [u8; 4],
+    bat_low: bool,
     boot_count: u8,
     measurements: Vec<MeasurementPacket, MAX_MEASUREMENT_PACKETS>,
 }
 
 impl Packet {
-    pub fn new(battery: u8, temp: u8, charge_state_fraction: u8, boot_count: u8) -> Self {
+    pub fn new(battery: u8, temp: u8, charge_state_fraction: [u8; 4], bat_low: bool, boot_count: u8) -> Self {
         Self {
             battery,
             temp,
             lat: 0,
             lon: 0,
             charge_state_fraction,
+            bat_low,
             boot_count,
             measurements: Vec::new(),
         }
@@ -98,7 +100,8 @@ impl Packet {
         data.push(self.temp).ok();
         data.push(self.lat).ok();
         data.push(self.lon).ok();
-        data.push(self.charge_state_fraction).ok();
+        data.extend_from_slice(&self.charge_state_fraction).ok();
+        data.push(self.bat_low as u8).ok();
         data.push(self.boot_count).ok();
 
         // Measurements
@@ -128,7 +131,7 @@ pub async fn task_comms(
         match select {
             Either::First(request) => {
                 match request {
-                    CommReqMsg::Send { sectors, config, battery_mv, temp_c, charge_state_fraction, events  } => {
+                    CommReqMsg::Send { sectors, config, battery_mv, temp_c, charge_state_fraction, bat_low, events  } => {
                         let uids: heapless::Vec<u32, MAX_SECTORS> = sectors.iter()
                             .map(|s| s.get_uid())
                             .take(MAX_SECTORS)
@@ -141,6 +144,7 @@ pub async fn task_comms(
                             battery_mv, 
                             temp_c,
                             charge_state_fraction,
+                            bat_low,
                             events
                         ).await;
                         if result.is_err() {
@@ -188,7 +192,8 @@ async fn run_comms(
     sectors: Vec<Sector, MAX_SECTORS>,
     battery_mv: Option<u32>,
     temp_c: Option<f32>,
-    charge_state_fraction: u8,
+    charge_state_fraction: [u8; 4],
+    bat_low: bool,
     events: Vec<Event, MAX_EVENTS>
 ) -> Result<(), CommsError> {
     info!("[comm] Turning on RockBlock");
@@ -229,6 +234,7 @@ async fn run_comms(
         scaled_bat_mv,
         scaled_temp_c,
         charge_state_fraction,
+        bat_low,
         boot_count
     );
 

@@ -40,7 +40,7 @@
             <span id="rangeDisplay" class="text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 rounded-full border border-blue-100"></span>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-500 uppercase">Start Index</label>
                 <input type="range" id="rangeStart" value="0" min="0" step="1">
@@ -48,6 +48,12 @@
             <div class="space-y-2">
                 <label class="text-[10px] font-bold text-slate-500 uppercase">End Index</label>
                 <input type="range" id="rangeEnd" value="100" min="0" step="1">
+            </div>
+            <div class="space-y-2">
+                <label class="text-[10px] font-bold text-slate-500 uppercase">Filter by Thing</label>
+                <select id="thingSelect" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-semibold text-slate-700 focus:outline-none focus:border-blue-500 transition-colors">
+                    <option value="all">All Things</option>
+                </select>
             </div>
         </div>
     </section>
@@ -88,6 +94,8 @@
                             <th class="p-4 border-b">Thing</th>
                             <th class="p-4 border-b">Batt (mV)</th>
                             <th class="p-4 border-b">Temp (°C)</th>
+                            <th class="p-4 border-b">Bat Low</th>
+                            <th class="p-4 border-b">F / No / Ch / St Fractions</th>
                             <th class="p-4 border-b">RH Mean (m)</th>
                             <th class="p-4 border-b">Payload</th>
                         </tr>
@@ -103,7 +111,7 @@
     const MIN_TEMP_C = -30.0, MAX_TEMP_C = 80.0;
     const MIN_BATT_MV = 2000, MAX_BATT_MV = 5000;
     const MAX_REL_HEIGHT = 20.0;
-    const HEADER_OFFSET = 7, MEAS_SIZE = 6;
+    const HEADER_OFFSET = 11, MEAS_SIZE = 6;
 
     let allRecords = [];
     let charts = {};
@@ -111,6 +119,7 @@
 
     const startInput = document.getElementById('rangeStart');
     const endInput = document.getElementById('rangeEnd');
+    const thingSelect = document.getElementById('thingSelect');
     const rangeDisplay = document.getElementById('rangeDisplay');
     const tbody = document.getElementById('dataTable');
 
@@ -130,10 +139,19 @@
 
     function decodePayload(hex) {
         const bytes = hexToBytes(hex);
-        if (!bytes || bytes.length < 7) return null;
+        if (!bytes || bytes.length < 11) return null;
+        
         const battery = Math.round(mapValue(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
         const temp = parseFloat(mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2));
-        const measCount = bytes[6];
+        
+        const fault = bytes[4];
+        const noInput = bytes[5];
+        const charging = bytes[6];
+        const standby = bytes[7];
+
+        const batLow = bytes[8] === 1 ? "Low" : "OK";
+        const measCount = bytes[10];
+        
         let measurements = [];
         for (let j = 0; j < measCount; j++) {
             let i = HEADER_OFFSET + (j * MEAS_SIZE);
@@ -141,7 +159,7 @@
             const rawRelMean = bytes[i+1] | (bytes[i+2] << 8);
             measurements.push({ rh: parseFloat(mapValue(rawRelMean, 65535, 0, MAX_REL_HEIGHT).toFixed(3)) });
         }
-        return { battery, temp, measurements, raw: hex };
+        return { battery, temp, fault, noInput, charging, standby, batLow, measurements, raw: hex };
     }
 
     document.getElementById('csvFile').addEventListener('change', function(e) {
@@ -173,6 +191,16 @@
         allRecords.sort((a, b) => a.timestamp - b.timestamp);
 
         if (allRecords.length > 0) {
+            // Extract unique 'Thing' properties to fill our dropdown option list dynamically
+            thingSelect.innerHTML = '<option value="all">All Things</option>';
+            const uniqueThings = [...new Set(allRecords.map(r => r.thing))];
+            uniqueThings.forEach(thing => {
+                const opt = document.createElement('option');
+                opt.value = thing;
+                opt.innerText = thing;
+                thingSelect.appendChild(opt);
+            });
+
             startInput.max = allRecords.length - 1;
             endInput.max = allRecords.length - 1;
             startInput.value = 0;
@@ -194,8 +222,14 @@
             end = parseInt(endInput.value);
         }
 
-        filteredRecords = allRecords.slice(start, end + 1);
-        rangeDisplay.innerText = `INDEX ${start} — ${end} (${filteredRecords.length} TOTAL)`;
+        // Apply slice window filtering first
+        let slicedRecords = allRecords.slice(start, end + 1);
+        
+        // Filter elements based on selection values
+        const selectedThing = thingSelect.value;
+        filteredRecords = slicedRecords.filter(r => selectedThing === 'all' || r.thing === selectedThing);
+        
+        rangeDisplay.innerText = `INDEX ${start} — ${end} (${filteredRecords.length} VISIBLE)`;
 
         const labels = filteredRecords.map(r => {
             const d = r.timestamp;
@@ -212,6 +246,13 @@
                 <td class="p-4 font-bold text-slate-700">${r.thing}</td>
                 <td class="p-4 font-semibold text-blue-600">${r.battery}</td>
                 <td class="p-4 font-semibold text-orange-600">${r.temp}</td>
+                <td class="p-4 font-semibold ${r.batLow === 'Low' ? 'text-red-600 font-bold' : 'text-slate-500'}">${r.batLow}</td>
+                <td class="p-4 val-mono text-xs text-slate-600 font-medium">
+                    <span class="text-red-500">${r.fault}</span> / 
+                    <span class="text-slate-400">${r.noInput}</span> / 
+                    <span class="text-blue-500">${r.charging}</span> / 
+                    <span class="text-orange-400">${r.standby}</span>
+                </td>
                 <td class="p-4 font-semibold text-emerald-600">${r.measurements[0]?.rh || '0'}</td>
                 <td class="p-4 text-[9px] val-mono text-slate-300 truncate max-w-[150px]" title="${r.raw}">${r.raw}</td>
             </tr>
@@ -248,8 +289,8 @@
     }
 
     function exportToCSV() {
-        let csvContent = "data:text/csv;charset=utf-8,Time,Thing,Battery_mV,Temp_C,RH_m,Payload\n" 
-            + filteredRecords.map(r => `${r.timeLabel},${r.thing},${r.battery},${r.temp},${r.measurements[0]?.rh || 0},${r.raw}`).join("\n");
+        let csvContent = "data:text/csv;charset=utf-8,Time,Thing,Battery_mV,Temp_C,Bat_Low,Fault_Frac,NoInput_Frac,Charging_Frac,Standby_Frac,RH_m,Payload\n" 
+            + filteredRecords.map(r => `${r.timeLabel},${r.thing},${r.battery},${r.temp},${r.batLow},${r.fault},${r.noInput},${r.charging},${r.standby},${r.measurements[0]?.rh || 0},${r.raw}`).join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
@@ -260,6 +301,7 @@
 
     startInput.addEventListener('input', updateSelection);
     endInput.addEventListener('input', updateSelection);
+    thingSelect.addEventListener('change', updateSelection);
 </script>
 
 </body>

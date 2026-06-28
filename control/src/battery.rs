@@ -1,8 +1,6 @@
-//Stat1 = fault 
-//Stat2 = charge
-
 use defmt::info;
 use defmt::Format;
+use embassy_futures::select::Either;
 use embassy_time::with_timeout;
 use embassy_time::Duration;
 use embassy_futures::select::select;
@@ -12,31 +10,30 @@ use crate::gpio;
 use crate::adc;
 
 pub struct Battery {
-    pin_stat1: gpio::Input<'static>,
-    pin_stat2: gpio::Input<'static>,
-    pin_CE: gpio::Output<'static>,
+    pin_low_bat: gpio::Input<'static>,
+    pin_powergood: gpio::Input<'static>,
+    pin_status: gpio::Input<'static>,
     pin_voltage: adc::Channel<'static>,
     pin_temp: adc::Channel<'static>,
     adc: adc::Adc<'static, adc::Async>,
-    chargestate: ChargeState,
 }
 
 impl Battery {
-    pub fn new(pin_stat1: gpio::Input<'static>, 
-            pin_stat2: gpio::Input<'static>, 
-            pin_CE: gpio::Output<'static>, 
+    pub fn new(
+            pin_low_bat: gpio::Input<'static>,
+            pin_powergood: gpio::Input<'static>, 
+            pin_status: gpio::Input<'static>, 
             pin_voltage: adc::Channel<'static>, 
             pin_temp: adc::Channel<'static>,
             adc: adc::Adc<'static, adc::Async>,
             ) -> Self {
         Battery { 
-            pin_stat1, 
-            pin_stat2, 
-            pin_CE, 
+            pin_low_bat, 
+            pin_powergood, 
+            pin_status, 
             pin_voltage, 
             pin_temp,
             adc,
-            chargestate: ChargeState::Unknown,
         }
     }
 
@@ -103,35 +100,36 @@ impl Battery {
         Ok(temp_c)
     }
 
-    pub async fn wait_state_change (&mut self) -> ChargeState {
-        if self.get_state() == self.chargestate {
-            let s1 = self.pin_stat1.wait_for_any_edge();
-            let s2 = self.pin_stat2.wait_for_any_edge();
+    pub async fn get_state(&mut self) -> (ChargeState, bool) {
+        let mut timer_future = Timer::after(Duration::from_millis(1200));
+        let mut edge_future = self.pin_status.wait_for_any_edge();
 
-            select(s1,s2).await;
+        let mut edge_count = 0;
+        loop {
+            match select( edge_future, &mut timer_future).await {
+                Either::First(_) => {
+                    edge_count +=1;
+                    edge_future = self.pin_status.wait_for_any_edge();
+                },
+                Either::Second(_) => {
+                    break;
+                }
+            }
         }
 
-        self.chargestate = self.get_state();
-        self.chargestate
-    }
+        let pin_conditions = (edge_count >= 2, self.pin_powergood.is_high(), self.pin_status.is_high());
 
-    pub fn get_state (&mut self) -> ChargeState {
-        //HH - Completed
-        //HL - Charging
-        //LH - Rec. fault
-        //HL - Non rec. fault
-        match (self.pin_stat1.is_high(), self.pin_stat2.is_high()) {
-            (true, true) => ChargeState::Completed,
-            (true, false) => ChargeState::Charging,
-            (false, true) => ChargeState::RecoverableFault,
-            (false, false) => ChargeState::NonRecoverableFault 
-        }
-    }
+        let chargestate = match pin_conditions {
+            (true, _, _) => ChargeState::Fault,    // Fault takes priority
+            (false, true, _) => ChargeState::NoInput,
+            (false, false, false) => ChargeState::Charging,
+            (false, false, true) => ChargeState::Standby,
 
-    pub async fn toggle_ce(&mut self) {
-        self.pin_CE.set_high();
-        Timer::after_secs(1).await;
-        self.pin_CE.set_low();
+        };
+
+        let bat_low = self.pin_low_bat.is_low();
+
+        (chargestate, bat_low) //Bat low
     }
 
 }
@@ -147,8 +145,8 @@ fn convert_to_celsius(raw_temp: f32) -> f32 {
 #[derive(Format, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChargeState {
     Unknown,
-    Completed,
-    Charging,
-    RecoverableFault,
-    NonRecoverableFault
+    Fault, // Stat=Blinking (charging is blocked)
+    NoInput, // PG=High (no power available)
+    Charging, // PG=Low, Stat=Low (power available and charging)
+    Standby // PG=Low, Stat=High (power available not charging)
 }

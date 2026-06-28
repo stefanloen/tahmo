@@ -5,6 +5,8 @@ use embassy_time::{Duration, Instant, Timer};
 use core::cmp::max;
 use crate::{battery::{Battery, ChargeState}, messages::{MonReqMsg, MonResMsg}};
 
+const ADC_POLL_INTERVAL: u64 = 30;
+const CHARGE_POLL_INTERVAL: u64 = 30;
 
 #[embassy_executor::task]
 pub async fn task_monitor(
@@ -56,7 +58,7 @@ pub async fn task_monitor(
                     }
                 }
 
-                next_adc_measurement = next_adc_measurement.saturating_add(Duration::from_secs(30));
+                next_adc_measurement = next_adc_measurement.saturating_add(Duration::from_secs(ADC_POLL_INTERVAL));
             }
             Either3::Second(message) => {
                 match message {
@@ -73,29 +75,22 @@ pub async fn task_monitor(
                 }
             }
             Either3::Third(_) => {
-                let charge_state = battery.get_state();
+                let (charge_state, bat_low) = battery.get_state().await;
                 
-                if charge_state != charge_state_monitor.get_state() {
-                    info!("[moni] Charge controller state: {:?}", charge_state);
-                    charge_state_monitor.set_state(charge_state);
+                info!("[moni] Charge controller state: {:?}", charge_state);
+                charge_state_monitor.set_state(charge_state);
 
-                    let statefraction = charge_state_monitor.get_fraction();
-                    channel_res.send(MonResMsg::ChargeStateFraction { fraction: statefraction }).await;
+                let statefraction = charge_state_monitor.get_fraction();
+                channel_res.send(MonResMsg::ChargeState { fraction: statefraction, bat_low: bat_low }).await;
 
-                    let (a,b,c,d) = unpack_fractions(statefraction);
-                    info!(
-                        "[moni] ChargeState fraction byte: 0x{:02X}, completed: {:?}, charging: {:?}, recoverable: {:?}, nonrecoverable: {:?}",
-                        statefraction, a, b, c, d
-                    );
+                let (a,b,c,d) = unpack_fractions(statefraction);
+                info!(
+                    "[moni] ChargeState fraction bytes: Fault: {:?}, NoInput: {:?}, Charging: {:?}, Standby: {:?}",
+                    a, b, c, d
+                );
+                info!("[moni] Battery low: {:?}", bat_low);
 
-                    if charge_state == ChargeState::NonRecoverableFault {
-                        info!("[moni] Toggling charge controller CE");
-                        battery.toggle_ce().await;
-                        info!("[moni] Toggling charge controller CE done");
-                    }
-                }
-
-                next_charge_poll = next_charge_poll.saturating_add(Duration::from_secs(10));
+                next_charge_poll = next_charge_poll.saturating_add(Duration::from_secs(CHARGE_POLL_INTERVAL));
             }
         }
     }
@@ -114,10 +109,10 @@ fn calc_emwa(now: f32, previous: f32, k: f32, min: f32, max: f32) -> f32 {
 }
 
 struct ChargeStateMonitor {
-    time_completed: u64,
+    time_fault: u64,
+    time_noinput: u64,
     time_charging: u64,
-    time_recoverable: u64,
-    time_nonrecoverable: u64,
+    time_standby: u64,
 
     last_time: Instant,
     current_state: ChargeState,
@@ -126,20 +121,20 @@ struct ChargeStateMonitor {
 impl ChargeStateMonitor {
     pub fn new () -> Self{
         Self {
-            time_completed: 0,
+            time_fault: 0,
+            time_noinput: 0,
             time_charging: 0,
-            time_recoverable: 0,
-            time_nonrecoverable: 0,
+            time_standby: 0,
             last_time: Instant::now(),
             current_state: ChargeState::Unknown
         }
     }
 
     pub fn reset(&mut self) {
-        self.time_completed = 0;
+        self.time_fault = 0;
+        self.time_noinput = 0;
         self.time_charging = 0;
-        self.time_recoverable = 0;
-        self.time_nonrecoverable = 0;
+        self.time_standby = 0;
 
         self.last_time = Instant::now();
         self.current_state = ChargeState::Unknown;
@@ -150,11 +145,11 @@ impl ChargeStateMonitor {
 
         //Make sure that even <1 seconds in a state is represented
         match self.current_state {
-            ChargeState::Charging => self.time_charging = (self.time_charging+passed_time).max(1),
-            ChargeState::Completed => self.time_completed = (self.time_completed+passed_time).max(1),
-            ChargeState::RecoverableFault => self.time_recoverable = (self.time_recoverable+passed_time).max(1),
-            ChargeState::NonRecoverableFault => self.time_nonrecoverable = (self.time_nonrecoverable+passed_time).max(1),
             ChargeState::Unknown => {},
+            ChargeState::Fault => self.time_fault = (self.time_fault+passed_time).max(1),
+            ChargeState::NoInput => self.time_noinput = (self.time_noinput+passed_time).max(1),
+            ChargeState::Charging => self.time_charging = (self.time_charging+passed_time).max(1),
+            ChargeState::Standby => self.time_standby = (self.time_standby+passed_time).max(1),
         }
 
         self.current_state = charge_state;
@@ -165,30 +160,30 @@ impl ChargeStateMonitor {
         self.current_state
     }
 
-    pub fn get_fraction(&mut self) -> u8 {
+    pub fn get_fraction(&mut self) -> [u8; 4] {
+        // Function needs minimal changing to allow use of less bytes
         self.set_state(self.current_state);
 
         let max_time = max(
-            max(self.time_completed, self.time_charging),
-            max(self.time_recoverable, self.time_nonrecoverable),
+            max(self.time_fault, self.time_noinput),
+            max(self.time_charging, self.time_standby),
         ) as f32;
 
         if max_time == 0.0 {
-            return 0;
-        }
+            return [0, 0, 0, 0];
+        } 
 
-        let a = self.time_completed as f32 / max_time;
-        let b = self.time_charging as f32 / max_time;
-        let c = self.time_recoverable as f32 / max_time;
-        let d = self.time_nonrecoverable as f32 / max_time;
+        let a = self.time_fault as f32 / max_time;
+        let b = self.time_noinput as f32 / max_time;
+        let c = self.time_charging as f32 / max_time;
+        let d = self.time_standby as f32 / max_time;
 
-        let qa = non_std_ceil(a * 3.0).min(3.0) as u8;
-        let qb = non_std_ceil(b * 3.0).min(3.0) as u8;
-        let qc = non_std_ceil(c * 3.0).min(3.0) as u8;
-        let qd = non_std_ceil(d * 3.0).min(3.0) as u8;
+        let qa = non_std_ceil(a * 255.0).min(255.0) as u8;
+        let qb = non_std_ceil(b * 255.0).min(255.0) as u8;
+        let qc = non_std_ceil(c * 255.0).min(255.0) as u8;
+        let qd = non_std_ceil(d * 255.0).min(255.0) as u8;
 
-        // Pack into 8 bits: [a:2][b:2][c:2][d:2]
-        (qa << 6) | (qb << 4) | (qc << 2) | qd
+        [qa, qb, qc, qd]
     }
 
 }
@@ -205,10 +200,10 @@ fn non_std_ceil(x: f32) -> f32 {
     }
 }
 
-fn unpack_fractions(byte: u8) -> (u8, u8, u8, u8) {
-    let a = (byte >> 6) & 0b11;
-    let b = (byte >> 4) & 0b11;
-    let c = (byte >> 2) & 0b11;
-    let d = byte & 0b11;
+fn unpack_fractions(bytes: [u8; 4]) -> (u8, u8, u8, u8) {
+    let a = bytes[0];
+    let b = bytes[1];
+    let c = bytes[2];
+    let d = bytes[3];
     (a, b, c, d)
 }

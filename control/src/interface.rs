@@ -39,6 +39,7 @@ enum InterfaceState {
     Disconnected,
     Idle,
     Batvolt,
+    GetTemp,
     GetConst,
     GetConfig,
     GetState,
@@ -112,8 +113,9 @@ pub async fn interface_task(
                     info!("[intf] Terminal Disconnected");
                 } else if !receiver.dtr() && let InterfaceState::Batvolt = interface.state{
                     interface.state = InterfaceState::Disconnected;
-                    //Disconnect while getting batvolt
                     info!("[intf] Terminal Disconnected, abort getting battery voltage");
+                } else if !receiver.dtr() && let InterfaceState::GetTemp = interface.state{
+                    interface.state = InterfaceState::Disconnected;
                 }
             },
             Either3::Second(res) => {
@@ -140,6 +142,7 @@ pub async fn interface_task(
 help | ? - Gives a list of commands
 status - Give a full status update
 batvolt - Get battery voltage
+gettemp - Get chip temperature
 getconst - Get the constellation state
 getconfig - Get the current configuration
 setconfig - Set configuration
@@ -152,6 +155,10 @@ setconfig - Set configuration
                             "batvolt" => {
                                 channel_res.send(IntResMsg::GetBatVolt).await;
                                 interface.state = InterfaceState::Batvolt;
+                            }
+                            "gettemp" => {
+                                channel_res.send(IntResMsg::GetTemp).await;
+                                interface.state = InterfaceState::GetTemp;
                             }
                             "getconst" => {
                                 usb_writeln!(writer, "Getting constellation state. Please wait...").await.ok();
@@ -257,7 +264,7 @@ help | ? - Gives a list of settings
 elevation <min> <max>, example use: 'setconfig elevation 5 30'
 azimuth <min> <max>, example use: 'setconfig azimuth 120 240'
 height <min> <max>, example use: 'setconfig height 0.5 15'
-measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00:00 4 60'
+measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00:00:00 4 60'
 ").await.ok();
                                     }
                                     _ => {
@@ -305,6 +312,21 @@ measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00
                                 // Ignore other requests
                             }
 
+                        };
+                    },
+                    InterfaceState::GetTemp => {
+                        match request {
+                            IntReqMsg::TempSuccess {temp} => {
+                                usb_writeln!(writer, "Chip temperature: {:.0}C", {temp}).await.ok();
+                                interface.state = InterfaceState::Idle;
+                            },
+                            IntReqMsg::TempFail =>{
+                                usb_writeln!(writer, "Could not get chip temperature").await.ok();
+                                interface.state = InterfaceState::Idle;
+                            },
+                            _ => {
+                                // Ignore other requests
+                            }
                         };
                     },
                     InterfaceState::GetConst => {

@@ -1,5 +1,5 @@
 # realtime-gnssrefl
-The code repository for Joint Interdisciplinary Project 2025 - Team 3.8.1 TAHMO.
+The repository for the water level measurement system from TAHMO.
 
 The project contains the following parts
 
@@ -36,5 +36,5 @@ $ cd dashboard
 $ python main.py
 ```
 
-## Design files
-Fusion files of the PCB prototype (unfinished). Can also be found here as long as the link is live: https://a360.co/3LjTuod
+## hardware
+Contains the KiCAD PCB design files as raw project folder and as archive. Also contains some design documentation.
