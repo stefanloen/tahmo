@@ -11,8 +11,9 @@
         
         .input-section { background: var(--card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 2rem; position: relative; }
         
-        /* New Styles for Navigation Button */
-        .nav-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+        /* Modified Navigation Layout Styles */
+        .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; }
+        .nav-links { display: flex; gap: 8px; }
         .csv-nav-btn { 
             text-decoration: none;
             font-size: 0.85rem;
@@ -55,7 +56,10 @@
     <div class="input-section">
         <div class="nav-header">
             <h1>Telemetry Decoder</h1>
-            <a href="csv_decoder.html" class="csv-nav-btn">CSV Analytics →</a>
+            <div class="nav-links">
+                <a href="console.html" class="csv-nav-btn">← Serial Console</a>
+                <a href="csv_decoder.html" class="csv-nav-btn">CSV Analytics →</a>
+            </div>
         </div>
         <textarea id="dataInput" placeholder="Paste Hex or Base64 string here..."></textarea>
         
@@ -138,7 +142,6 @@
                 bytes = new Uint8Array(input.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
             }
 
-            // Expanded metadata footprint from 7 to 11 bytes
             if (bytes.length < 11) throw new Error(`Packet too short (${bytes.length} bytes). Need at least 11 for metadata.`);
 
             render(bytes);
@@ -156,13 +159,11 @@
         const latDigits = bytes[2];
         const lonDigits = bytes[3];
         
-        // Extract 4-byte charge state sequence
         const faultByte = bytes[4];
         const noInputByte = bytes[5];
         const chargingByte = bytes[6];
         const standbyByte = bytes[7];
 
-        // Read explicit flags and metrics shifts
         const batLowFlag = bytes[8];
         const bootCount = bytes[9];
         const measCount = bytes[10];
@@ -175,7 +176,6 @@
         document.getElementById('out-boots').innerText = bootCount;
         document.getElementById('out-count').innerText = `(${measCount})`;
 
-        // Updated text targets to match the updated ChargeState enum design definitions
         const states = [
             { n: "Fault", v: faultByte },
             { n: "NoInput", v: noInputByte },
@@ -192,7 +192,6 @@
         const list = document.getElementById('measurementsList');
         list.innerHTML = '';
         
-        // Offset boundary updated to match the metadata structure changes
         const HEADER_OFFSET = 11;
         const MEAS_SIZE = 6;
 

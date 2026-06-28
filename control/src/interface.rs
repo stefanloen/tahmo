@@ -264,7 +264,7 @@ help | ? - Gives a list of settings
 elevation <min> <max>, example use: 'setconfig elevation 5 30'
 azimuth <min> <max>, example use: 'setconfig azimuth 120 240'
 height <min> <max>, example use: 'setconfig height 0.5 15'
-measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00:00 4 60'
+measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00:00:00 4 60'
 ").await.ok();
                                     }
                                     _ => {
