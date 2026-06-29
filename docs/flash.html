@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAHMO-WLM Automated Flasher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root { --primary: #2563eb; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: #ffffff; color: #1e293b; }
+    </style>
+</head>
+<body class="p-4 md:p-10 min-h-screen flex items-center justify-center bg-slate-50/50">
+
+<div class="max-w-xl w-full space-y-6">
+    
+    <header class="flex flex-col gap-4 bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+        
+        <nav class="flex flex-wrap gap-1.5 pb-4 border-b border-slate-100 text-xs font-bold">
+            <a href="index.html" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                Dashboard
+            </a>
+            <a href="flash.html" class="px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 transition shadow-sm">
+                Flasher
+            </a>
+            <a href="console.html" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                Console
+            </a>
+            <a href="cloudloop.html" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                Viewer
+            </a>
+        </nav>
+
+        <div class="flex justify-between items-start">
+            <div class="space-y-4">
+                <div>
+                    <h1 class="text-2xl font-extrabold text-slate-900 tracking-tight">TAHMO-WLM Flasher</h1>
+                    <p class="text-xs text-slate-500 mt-1 font-medium">This page allows updating the firmware of the WLM device. The following steps should be followed.</p>
+                </div>
+
+                <ol class="space-y-2 text-xs font-semibold text-slate-600">
+                    <li class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-900">Step 1:</span> Connect the USB cable.
+                    </li>
+                    <li class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-900">Step 2:</span> Shut down the device using the toggle switch.
+                    </li>
+                    <li class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-900">Step 3:</span> Press and hold the 'BOOT' button next to the USB connector.
+                    </li>
+                    <li class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-900">Step 4:</span> Turn on the device using the toggle switch. The device should now appear as a USB mass storage named RP2350.
+                    </li>
+                    <li class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-900">Step 5:</span> The 'BOOT' button can now be released.
+                    </li>
+                    <li class="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                        <span class="font-bold text-slate-900">Step 6:</span> Click 'Deploy Firmware' and select the RP2350 Mass storage.
+                    </li>
+                </ol>
+
+                <p class="text-xs text-slate-500 leading-relaxed pt-1">
+                    After following these steps correctly, the device will automatically disconnect and start normal operation (the green light will blink green). To connect to the device, use the Console.
+                </p>
+            </div>
+        </div>
+    </header>
+
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-6">
+
+        <div class="space-y-2 p-4 bg-slate-50 rounded-xl border border-slate-100">
+            <div class="flex justify-between items-center text-xs font-bold text-slate-600">
+                <span id="progressLabel">Status: Checking assets...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                <div id="progressBar" class="bg-blue-600 h-full w-0 transition-all duration-150 ease-out"></div>
+            </div>
+        </div>
+
+        <div>
+            <button id="flashBtn" class="w-full text-center text-sm bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-xl font-bold transition shadow-xl shadow-blue-100 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                Select Drive & Deploy Firmware
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    let activeFileBytes = null;
+    const targetFileName = "wlm-firmware.uf2";
+
+    // DOM Elements
+    const flashBtn = document.getElementById('flashBtn');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressLabel = document.getElementById('progressLabel');
+
+    // Runtime Guard Check for APIs
+    if (!('showDirectoryPicker' in window)) {
+        progressLabel.innerText = "Browser error: Directory Picker not supported.";
+    } else {
+        // Automatically fetch firmware on load
+        loadTargetFirmware();
+    }
+
+    async function loadTargetFirmware() {
+        try {
+            const response = await fetch(`./${targetFileName}`);
+            if (!response.ok) {
+                throw new Error(`Asset fetch missing or returned status code ${response.status}`);
+            }
+
+            const buffer = await response.arrayBuffer();
+            activeFileBytes = new Uint8Array(buffer);
+
+            progressLabel.innerText = "Ready to deploy.";
+            flashBtn.disabled = false;
+        } catch (err) {
+            progressLabel.innerText = `Error: Missing "${targetFileName}" in this folder.`;
+        }
+    }
+
+    flashBtn.addEventListener('click', async () => {
+        if (!activeFileBytes) return;
+
+        try {
+            // 1. Invoke directory picker
+            const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+
+            // Lock UI controls to protect the running thread
+            flashBtn.disabled = true;
+            progressBar.style.width = '0%';
+            progressBar.classList.remove('bg-emerald-500');
+            progressBar.classList.add('bg-blue-600');
+            progressPercent.innerText = '0%';
+            progressLabel.className = "text-xs font-bold text-slate-600";
+            progressLabel.innerText = "Initializing flash write...";
+
+            // 2. Provision file handle
+            const fileHandle = await dirHandle.getFileHandle(targetFileName, { create: true });
+            const writableStream = await fileHandle.createWritable();
+
+            const chunkSize = 65536; // 64KB blocks
+            let offset = 0;
+
+            // 3. Write data chunks scaled to a max of 90% of the bar
+            while (offset < activeFileBytes.length) {
+                const chunk = activeFileBytes.slice(offset, offset + chunkSize);
+                await writableStream.write(chunk);
+                offset += chunk.length;
+
+                // Math scaling actual file bytes to map exclusively between 0% and 90%
+                const dataPct = Math.round((offset / activeFileBytes.length) * 90);
+                progressBar.style.width = `${dataPct}%`;
+                progressPercent.innerText = `${dataPct}%`;
+                progressLabel.innerText = `Deploying core blocks...`;
+            }
+
+            // 4. Close handles to push cached bytes out to the OS layer
+            await writableStream.close();
+
+            // 5. THE FAKE 5-SECOND PROGRESS STRETCH (91% -> 100%)
+            progressLabel.className = "text-xs font-bold text-blue-600 animate-pulse";
+            progressLabel.innerText = "⚠️ Finalizing memory allocation... Do not disconnect.";
+
+            for (let i = 1; i <= 5; i++) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const fakePct = 90 + (i * 2); // Ticks up 2% every second up to 100%
+                progressBar.style.width = `${fakePct}%`;
+                progressPercent.innerText = `${fakePct}%`;
+            }
+
+            // 6. Safe Clearance State
+            progressBar.classList.remove('bg-blue-600');
+            progressBar.classList.add('bg-emerald-500'); // Clean Success green
+            progressPercent.innerText = '100%';
+            progressLabel.className = "text-xs font-bold text-emerald-600";
+            progressLabel.innerText = "Success! Safe to disconnect device.";
+
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                progressLabel.className = "text-xs font-bold text-slate-600";
+                progressLabel.innerText = "Flash setup canceled.";
+            } else {
+                progressLabel.className = "text-xs font-bold text-red-600";
+                progressLabel.innerText = `Write Error: ${err.message}`;
+            }
+        } finally {
+            flashBtn.disabled = false;
+        }
+    });
+</script>
+
+</body>
+</html>

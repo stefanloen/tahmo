@@ -18,19 +18,39 @@
 <body class="p-4 md:p-10">
 
 <div class="max-w-6xl mx-auto space-y-8">
-    <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div>
-            <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Telemetry Analytics</h1>
-            <p class="text-slate-500 text-sm">Visual inspection and raw data extraction</p>
-        </div>
-        <div class="flex gap-3">
-            <a href="index.html" class="inline-flex items-center px-6 py-3 text-sm font-bold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
-                ← Raw value parser
+    
+    <header class="flex flex-col gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        
+        <nav class="flex flex-wrap gap-1.5 pb-4 border-b border-slate-100 text-xs font-bold">
+            <a href="index.html" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                Dashboard
             </a>
-            <input type="file" id="csvFile" class="hidden" accept=".csv">
-            <label for="csvFile" class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold cursor-pointer hover:bg-blue-700 transition shadow-xl shadow-blue-100">
-                Upload CSV
-            </label>
+            <a href="flash.html" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                Flasher
+            </a>
+            <a href="console.html" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition shadow-sm">
+                Console
+            </a>
+            <a href="cloudloop.html" class="px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 transition shadow-sm">
+                Viewer
+            </a>
+        </nav>
+
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 w-full">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Cloudloop dataviewer</h1>
+                <p class="text-slate-500 text-sm mt-0.5 font-medium">
+                    The transmitted data can be downloaded from 
+                    <a href="https://console.cloudloop.com/" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline font-semibold transition-colors">https://console.cloudloop.com/</a>. 
+                    The downloaded .csv file should be uploaded here. 
+                </p>            
+            </div>
+            <div class="flex gap-3">
+                <input type="file" id="csvFile" class="hidden" accept=".csv">
+                <label for="csvFile" class="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold cursor-pointer hover:bg-blue-700 transition shadow-xl shadow-blue-100 block text-center text-sm whitespace-nowrap">
+                    Upload CSV
+                </label>
+            </div>
         </div>
     </header>
 

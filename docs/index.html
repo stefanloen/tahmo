@@ -3,222 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TAHMO WLM Parser</title>
+    <title>TAHMO WLM Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root { --primary: #2563eb; --bg: #f1f5f9; --card: #ffffff; --text: #1e293b; }
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; padding: 1rem; }
-        .container { max-width: 900px; margin: 0 auto; }
-        
-        .input-section { background: var(--card); padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 2rem; position: relative; }
-        
-        /* Modified Navigation Layout Styles */
-        .nav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 10px; }
-        .nav-links { display: flex; gap: 8px; }
-        .csv-nav-btn { 
-            text-decoration: none;
-            font-size: 0.85rem;
-            font-weight: 600;
-            color: #475569;
-            background: #e2e8f0;
-            padding: 6px 14px;
-            border-radius: 8px;
-            transition: all 0.2s;
-        }
-        .csv-nav-btn:hover { background: #cbd5e1; color: var(--text); }
-
-        textarea { width: 100%; height: 100px; padding: 12px; border: 2px solid #cbd5e1; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 1rem; box-sizing: border-box; resize: vertical; margin-bottom: 1rem; }
-        
-        .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .btn-group { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; }
-        .mode-btn { border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; color: #64748b; background: transparent; transition: 0.2s; }
-        .mode-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .decode-btn { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold; margin-left: auto; }
-        .decode-btn:hover { background: #1d4ed8; }
-
-        .card { background: var(--card); padding: 1.5rem; border-radius: 12px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem; }
-        label { font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700; display: block; margin-bottom: 4px; }
-        .val { font-family: 'Courier New', monospace; font-size: 1.25rem; font-weight: 600; }
-        
-        .pill-container { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 1rem; border-top: 1px solid #e2e8f0; padding-top: 1rem; }
-        .pill { background: #f8fafc; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; }
-        .pill b { color: var(--primary); }
-
-        .measurement-row { border-left: 4px solid var(--primary); }
-        .error { color: #b91c1c; background: #fee2e2; padding: 1rem; border-radius: 8px; display: none; margin-bottom: 1rem; }
-        h1 { margin-top: 0; font-size: 1.5rem; margin-bottom: 0; }
-        h2 { margin-top: 0; font-size: 1.1rem; color: #475569; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: #ffffff; color: #1e293b; }
     </style>
 </head>
-<body>
+<body class="p-4 md:p-10 min-h-screen flex items-center justify-center bg-slate-50/50">
 
-<div class="container">
-    <div class="input-section">
-        <div class="nav-header">
-            <h1>Telemetry Decoder</h1>
-            <div class="nav-links">
-                <a href="console.html" class="csv-nav-btn">← Serial Console</a>
-                <a href="csv_decoder.html" class="csv-nav-btn">CSV Analytics →</a>
-            </div>
-        </div>
-        <textarea id="dataInput" placeholder="Paste Hex or Base64 string here..."></textarea>
+<div class="max-w-4xl w-full space-y-10 py-8">
+    
+    <header class="text-center space-y-3 max-w-2xl mx-auto">
+        <h1 class="text-4xl font-extrabold text-slate-900 tracking-tight sm:text-5xl">
+            TAHMO WLM Dashboard
+        </h1>
+        <p class="text-sm text-slate-500 font-medium leading-relaxed">
+            Welcome to the dashboard for the WLM sensor.
+        </p>
+    </header>
+
+    <hr class="border-slate-200/60 max-w-xs mx-auto">
+
+    <main class="grid grid-cols-1 md:grid-cols-3 gap-6">
         
-        <div class="controls">
-            <div class="btn-group" id="formatSelector">
-                <button class="mode-btn active" onclick="setFormat('auto')">Auto-Detect</button>
-                <button class="mode-btn" onclick="setFormat('hex')">Hex</button>
-                <button class="mode-btn" onclick="setFormat('base64')">Base64</button>
+        <a href="flash.html" class="group bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-200 flex flex-col justify-between space-y-4">
+            <div class="space-y-2">
+                <h3 class="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                    Firmware Flasher
+                </h3>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Program a new device or update its firmware to the latest version using USB.
+                </p>
             </div>
-            <button class="decode-btn" onclick="process()">Decode Data</button>
-        </div>
-    </div>
-
-    <div id="errorBox" class="error"></div>
-
-    <div id="output" style="display:none;">
-        <div class="card">
-            <h2>Header Information</h2>
-            <div class="grid">
-                <div><label>Battery</label><div class="val" id="out-batt">-</div></div>
-                <div><label>Temperature</label><div class="val" id="out-temp">-</div></div>
-                <div><label>Lat digits</label><div class="val" id="out-lat">-</div></div>
-                <div><label>Long digits</label><div class="val" id="out-lon">-</div></div>
-                <div><label>Low Battery</label><div class="val" id="out-batlow">-</div></div>
-                <div><label>Session Boots</label><div class="val" id="out-boots">-</div></div>
+            <div class="text-[10px] font-bold text-blue-600 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                Open firmware flasher &rarr;
             </div>
-            <div class="pill-container" id="out-charge"></div>
-        </div>
+        </a>
 
-        <h2 style="padding-left: 0.5rem;">Measurements <span id="out-count"></span></h2>
-        <div id="measurementsList"></div>
-    </div>
+        <a href="console.html" class="group bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-200 flex flex-col justify-between space-y-4">
+            <div class="space-y-2">
+                <h3 class="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                    Console
+                </h3>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Connect directly to the device using USB to set the configuration, download raw stored data or obtain system diagnostics. 
+                </p>
+            </div>
+            <div class="text-[10px] font-bold text-blue-600 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                Open Console &rarr;
+            </div>
+        </a>
+
+        <a href="cloudloop.html" class="group bg-white p-6 rounded-2xl border border-slate-200/80 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-200 flex flex-col justify-between space-y-4">
+            <div class="space-y-2">
+                <h3 class="text-lg font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                    Cloudloop Viewer
+                </h3>
+                <p class="text-xs text-slate-500 leading-relaxed">
+                    Visualize data downloaded from cloudloop.
+                </p>
+            </div>
+            <div class="text-[10px] font-bold text-blue-600 group-hover:translate-x-1 transition-transform inline-flex items-center gap-1">
+                Open viewer &rarr;
+            </div>
+        </a>
+
+    </main>
+
+    <section class="bg-white p-6 rounded-2xl border border-slate-200/80 space-y-4 shadow-sm">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+                <h3 class="text-lg font-bold text-slate-900">WLM Sensor Manual</h3>
+                <p class="text-xs text-slate-500">View or download the official device documentation.</p>
+            </div>
+            <a href="wlm-manual.pdf" target="_blank" class="text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1">
+                Open in Full Window &rarr;
+            </a>
+        </div>
+        
+        <div class="w-full bg-slate-50 rounded-xl overflow-hidden border border-slate-100 aspect-[4/3] md:aspect-[16/9]">
+            <iframe 
+                src="wlm-manual.pdf" 
+                class="w-full h-full border-0"
+                title="WLM Sensor Manual PDF Viewer">
+                <p class="p-6 text-sm text-slate-600 text-center">
+                    Your browser does not support embedded PDFs. 
+                    <a href="wlm-manual.pdf" class="text-blue-600 underline font-medium">Click here to download the PDF</a>.
+                </p>
+            </iframe>
+        </div>
+    </section>
+
+    <footer class="text-center text-[10px] font-semibold text-slate-400 tracking-wider uppercase">
+        TAHMO WLM
+    </footer>
+
 </div>
 
-<script>
-    let selectedFormat = 'auto';
-
-    const MAX_STD_DEV = 1.0;
-    const MAX_REL_HEIGHT = 20.0;
-    const MIN_TEMP_C = -30.0;
-    const MAX_TEMP_C = 80.0;
-    const MIN_BATT_MV = 2000;
-    const MAX_BATT_MV = 5000;
-
-    function setFormat(fmt) {
-        selectedFormat = fmt;
-        document.querySelectorAll('.mode-btn').forEach(btn => {
-            btn.classList.toggle('active', btn.innerText.toLowerCase().includes(fmt));
-        });
-    }
-
-    function mapValue(val, inMax, outMin, outMax) {
-        if (val <= 0) return outMin;
-        if (val >= inMax) return outMax;
-        return outMin + (val / inMax) * (outMax - outMin);
-    }
-
-    function process() {
-        const input = document.getElementById('dataInput').value.trim().replace(/\s+/g, '');
-        const errorBox = document.getElementById('errorBox');
-        const output = document.getElementById('output');
-        
-        errorBox.style.display = 'none';
-        
-        try {
-            let bytes;
-            let useBase64 = false;
-            
-            if (selectedFormat === 'base64') useBase64 = true;
-            else if (selectedFormat === 'auto') {
-                if (!/^[0-9A-Fa-f]+$/.test(input)) useBase64 = true;
-            }
-
-            if (useBase64) {
-                const binaryString = atob(input);
-                bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-            } else {
-                if (input.length % 2 !== 0) throw new Error("Hex string must have an even length.");
-                bytes = new Uint8Array(input.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-            }
-
-            if (bytes.length < 11) throw new Error(`Packet too short (${bytes.length} bytes). Need at least 11 for metadata.`);
-
-            render(bytes);
-            output.style.display = 'block';
-        } catch (e) {
-            errorBox.innerText = "Decoding Error: " + e.message;
-            errorBox.style.display = 'block';
-            output.style.display = 'none';
-        }
-    }
-
-    function render(bytes) {
-        const battery = Math.round(mapValue(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
-        const temp = mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2);
-        const latDigits = bytes[2];
-        const lonDigits = bytes[3];
-        
-        const faultByte = bytes[4];
-        const noInputByte = bytes[5];
-        const chargingByte = bytes[6];
-        const standbyByte = bytes[7];
-
-        const batLowFlag = bytes[8];
-        const bootCount = bytes[9];
-        const measCount = bytes[10];
-
-        document.getElementById('out-batt').innerText = battery + " mV";
-        document.getElementById('out-temp').innerText = temp + " °C";
-        document.getElementById('out-lat').innerText = latDigits;
-        document.getElementById('out-lon').innerText = lonDigits;
-        document.getElementById('out-batlow').innerText = batLowFlag === 1 ? "True (Low)" : "False (OK)";
-        document.getElementById('out-boots').innerText = bootCount;
-        document.getElementById('out-count').innerText = `(${measCount})`;
-
-        const states = [
-            { n: "Fault", v: faultByte },
-            { n: "NoInput", v: noInputByte },
-            { n: "Charging", v: chargingByte },
-            { n: "Standby", v: standbyByte }
-        ];
-        const totalChargePoints = states.reduce((a, b) => a + b.v, 0);
-        
-        document.getElementById('out-charge').innerHTML = states.map(s => {
-            const pct = totalChargePoints ? (s.v / totalChargePoints * 100).toFixed(1) : "0.0";
-            return `<div class="pill">${s.n}: <b>${s.v}</b> (${pct}%)</div>`;
-        }).join('');
-
-        const list = document.getElementById('measurementsList');
-        list.innerHTML = '';
-        
-        const HEADER_OFFSET = 11;
-        const MEAS_SIZE = 6;
-
-        for (let j = 0; j < measCount; j++) {
-            let i = HEADER_OFFSET + (j * MEAS_SIZE);
-            if (i + MEAS_SIZE > bytes.length) break;
-
-            const uid = bytes[i];
-            const rawRelMean = bytes[i+1] | (bytes[i+2] << 8);
-            const rawRelStd = bytes[i+3];
-            const used = bytes[i+4];
-            const seen = bytes[i+5];
-
-            const relMean = mapValue(rawRelMean, 65535, 0, MAX_REL_HEIGHT).toFixed(3);
-            const relStd = mapValue(rawRelStd, 255, 0, MAX_STD_DEV).toFixed(3);
-
-            list.innerHTML += `
-                <div class="card measurement-row">
-                    <div class="grid">
-                        <div><label>UID (mod 256)</label><div class="val">${uid}</div></div>
-                        <div><label>Rel. Height Mean</label><div class="val">${relMean} m</div></div>
-                        <div><label>Std Dev</label><div class="val">${relStd}</div></div>
-                        <div><label>Used / Seen</label><div class="val">${used} / ${seen}</div></div>
-                    </div>
-                </div>`;
-        }
-    }
-</script>
 </body>
 </html>
