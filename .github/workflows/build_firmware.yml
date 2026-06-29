@@ -1,0 +1,55 @@
+name: Build and Convert Firmware
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-convert:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Download your code onto the GitHub runner
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # 2. Install the target ARM architecture for Rust
+    - name: Set up Rust Toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: thumbv8m.main-none-eabihf
+
+    # 3. Cache dependencies so subsequent builds are lightning fast
+    - name: Rust Cache
+      uses: swatinem/rust-cache@v2
+
+    # 4. Install libusb and compile picotool directly from source
+    # (Pre-compiled picotool binaries have dynamic linking quirks on Ubuntu environments)
+    - name: Build and Install picotool
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libusb-1.0-0-dev cmake
+        git clone --depth 1 https://github.com/raspberrypi/picotool.git
+        cd picotool
+        mkdir build && cd build
+        cmake ..
+        make -j$(nproc)
+        sudo make install
+
+    # 5. Compile your firmware in Release mode
+    - name: Build Rust Firmware
+      run: cargo build --release
+
+    # 6. Convert the generated ELF binary to a UF2 file
+    - name: Convert to UF2
+      run: |
+        picotool uf2 convert ./target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/wlm-firmware.uf2
+
+    # 7. Save the .uf2 file so you can grab it from your browser
+    - name: Upload UF2 Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wlm-firmware-uf2
+        path: ./docs/wlm-firmware.uf2
