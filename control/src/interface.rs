@@ -8,8 +8,10 @@ use heapless::Vec;
 
 use crate::messages::{IntReqMsg, IntResMsg};
 use crate::usb::{MyUsbClass, UsbWriter};
-use crate::{usb_write, usb_writeln, utils};
+use crate::{StorageType, usb_write, usb_writeln, utils};
 use crate::types::{MAX_MIDPOINTS, SECONDS_PER_DAY};
+use crate::{compute::{Record, BUF_BYTES}, storage::{BinStorage, MeasurementStorage, SectorStorage}, types::{CONTAINER_SIZE, NUM_BINS, NUM_MEASUREMENTS}};
+
 
 /*
 TODO list:
@@ -84,6 +86,7 @@ pub async fn interface_task(
     channel_req: &'static Channel<CriticalSectionRawMutex, IntReqMsg, 8>,
     channel_res: &'static Channel<CriticalSectionRawMutex, IntResMsg, 8>,
     mut interface: Interface,
+    storage: &'static StorageType
 ) {
     let (mut sender, 
         mut receiver, 
@@ -146,6 +149,7 @@ gettemp - Get chip temperature
 getconst - Get the constellation state
 getconfig - Get the current configuration
 setconfig - Set configuration
+download - Download memory
 ").await.ok();
                             }
                             "status" => {
@@ -271,6 +275,10 @@ measurements <timepoint> <n> <duration>, example use: 'setconfig measurements 00
                                         usb_writeln!(writer, "Unknown or missing setting, for a list of settings, use 'setconfig help' or 'setconfig ?'").await.ok();
                                     }
                                 }
+                            }
+
+                            "download" => {
+                                download(storage, &mut writer).await;
                             }
 
                             _ => {
@@ -488,4 +496,120 @@ T: FromStr + PartialOrd + core::fmt::Display + Copy
             None
         }
     }
+}
+
+pub async fn download(storage: &'static StorageType, writer: &mut UsbWriter<'_, embassy_rp::usb::Driver<'static, embassy_rp::peripherals::USB>>) {
+    let mut storage_lock = storage.lock().await;
+    let storage = storage_lock.as_mut().expect("Storage should be initialized");
+
+    let sector_storage = SectorStorage::new();
+    let sectors = sector_storage.load(storage, false);
+    if let Ok(sectors) = sectors {
+        usb_writeln!(writer, "SECTOR:idx, uid, state, midpoint_idx, measurement_idx, start_bin_idx, start_time, lat, lon").await.ok();
+        for (i, sector) in sectors.iter().enumerate() {
+            usb_writeln!(
+                writer, 
+                "SECTOR:{}, {}, {:?}, {}, {}, {}, {}, {}, {}", 
+                i,
+                sector.get_uid(),
+                sector.state,
+                sector.get_midpoint_index(),
+                sector.get_measurement_index(),
+                sector.get_start_bin_index(),
+                sector.get_start_time(),
+                sector.get_lat(),
+                sector.get_lon(),
+            ).await.ok();
+        }
+    }
+
+    usb_writeln!(writer, "MEASUREMENT:idx, uid, mean, std, num_seen, start_time, end_time, lat, lon").await.ok();
+    usb_writeln!(writer, "OBSERVATION:meas_idx, obs_idx, sat_id, start_time, end_time, used, max_rh, max_amp, mean_amp, num_recs, max_rh_2, max_amp_2").await.ok();
+    let measurement_storage = MeasurementStorage::new();
+    for i in 0..NUM_MEASUREMENTS {
+        if let Some(measurement) = measurement_storage.read(storage, i as u32) {
+            if measurement.uid == 0 {
+                continue;
+            }
+            usb_writeln!(writer, "MEASUREMENT:{}, {}, {}, {}, {}, {}, {}, {}, {}",
+                i,
+                measurement.uid,
+                measurement.mean,
+                measurement.std,
+                measurement.num_seen,
+                measurement.start_time,
+                measurement.end_time,
+                measurement.lat,
+                measurement.lon
+            ).await.ok();
+            for (j, observation) in measurement.observations.iter().enumerate() {
+                if observation.sat_id == u16::MAX {
+                    continue;
+                }
+                usb_writeln!(writer,"OBSERVATION:{}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}",
+                    i,
+                    j,
+                    observation.sat_id,
+                    observation.start_time,
+                    observation.end_time,
+                    observation.used,
+                    observation.max_rh,
+                    observation.max_amp,
+                    observation.mean_amp,
+                    observation.num_recs,
+                    observation.max_rh_2,
+                    observation.max_amp_2
+                ).await.ok();
+
+                Timer::after_millis(1).await;
+            }
+        }
+    }
+
+    usb_writeln!(writer, "DATA:bin_idx,time,id,satellite,network,band,elevation,azimuth,snr").await.ok();
+    let bin_storage = BinStorage::new();
+
+    for i in 0..NUM_BINS {
+        let mut buffer = [0u8; CONTAINER_SIZE];
+        let result = bin_storage.read(storage, i as u32, &mut buffer);
+        if let Ok(_) = result {
+            let mut words = buffer.chunks_exact(4);
+
+            while let Some(hdr_b) = words.next() {
+                let header = u32::from_le_bytes([hdr_b[0], hdr_b[1], hdr_b[2], hdr_b[3]]);
+                let time = (header >> 8) as u16;
+                let num = (header & 0xFF) as u8;
+
+                if time == u16::MAX || num == 0 {
+                    continue;
+                }
+
+                for _ in 0..num {
+                    if let Some(smp_b) = words.next() {
+                        let sample = Record::from_sample(u32::from_le_bytes([smp_b[0], smp_b[1], smp_b[2], smp_b[3]]));
+
+                        usb_writeln!(writer,"DATA:{},{},{},{},{},{},{},{},{}",
+                            i,
+                            time,
+                            sample.get_id(),
+                            sample.get_satellite(),
+                            sample.get_network(),
+                            sample.get_band(),
+                            sample.get_elevation(),
+                            sample.get_azimuth(),
+                            sample.get_snr()
+                        ).await.ok();
+                    } else {
+                        break;
+                    }
+                }
+
+                Timer::after_millis(1).await;
+            }
+        } else {
+            info!("[main] no data for bin {}: {:?}", i, result.err().unwrap());
+        }
+    }
+
+    usb_writeln!(writer, "download finished").await.ok();
 }

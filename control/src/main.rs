@@ -221,7 +221,8 @@ async fn main(spawner: Spawner) {
     let result = spawner.spawn(interface_task(
         &INTERFACE_REQUEST_CHANNEL,
         &INTERFACE_RESPONSE_CHANNEL,
-        interface));
+        interface,
+        &STORAGE));
 
     if result.is_err() {
         error!("Failed to spawn Interface task: {}", result.unwrap_err());

@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TAHMO-WLM Mission Control</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root { --primary: #2563eb; }
         body { font-family: 'Inter', system-ui, sans-serif; background: #ffffff; color: #1e293b; }
-        .terminal-container { height: 500px; }
+        .terminal-container { height: calc(100vh - 240px); min-height: 480px; }
         .val-mono { font-family: 'ui-monospace', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace; }
         .custom-scrollbar::-webkit-scrollbar { width: 8px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
@@ -18,7 +19,7 @@
 </head>
 <body class="p-4 md:p-10">
 
-<div class="max-w-6xl mx-auto space-y-8">
+<div class="max-w-7xl mx-auto space-y-8">
     <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
             <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">TAHMO-WLM Console</h1>
@@ -43,28 +44,34 @@
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <button onclick="sendMacro('status')" class="macro-element p-2.5 text-xs font-bold border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 text-left transition disabled:opacity-40" disabled>
-                        📋 status
+                        Status
                     </button>
                     <button onclick="sendMacro('batvolt')" class="macro-element p-2.5 text-xs font-bold border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 text-left transition disabled:opacity-40" disabled>
-                        🔋 batvolt
+                        Battery Voltage
                     </button>
                     <button onclick="sendMacro('gettemp')" class="macro-element p-2.5 text-xs font-bold border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 text-left transition disabled:opacity-40" disabled>
-                        🌡️ gettemp
+                        Get Temperature
                     </button>
                     <button onclick="sendMacro('getconst')" class="macro-element p-2.5 text-xs font-bold border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 text-left transition disabled:opacity-40" disabled>
-                        🛰️ getconst
+                        Get Constellation
                     </button>
                     <button onclick="sendMacro('getconfig')" class="macro-element p-2.5 text-xs font-bold border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 text-left transition disabled:opacity-40" disabled>
-                        ⚙️ getconfig
+                        Get Configuration
                     </button>
                     <button onclick="sendMacro('help')" class="macro-element p-2.5 text-xs font-bold border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 text-left transition disabled:opacity-40" disabled>
-                        ❓ help
+                        Help
                     </button>
                 </div>
             </div>
 
+            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <button id="downloadBtn" class="w-full text-center text-sm bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold transition shadow-sm disabled:opacity-50" disabled>
+                    Download memory
+                </button>
+            </div>
+
             <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                <h3 class="text-xs font-black uppercase tracking-widest text-slate-400">Configuration Macros</h3>
+                <h3 class="text-xs font-black uppercase tracking-widest text-slate-400">Configuration</h3>
                 
                 <div class="space-y-1.5 p-3 bg-slate-50/60 rounded-xl border border-slate-100">
                     <label class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Set Elevation Range (0-90°)</label>
@@ -119,21 +126,15 @@
                         Execute
                     </button>
                 </div>
-                <div class="flex justify-end items-center pt-2 mt-2">
-                    <button id="clearBtn" class="text-xs text-slate-400 hover:text-slate-600 font-medium transition">Clear Stream View</button>
+                <div class="flex justify-end items-center pt-2 mt-2 border-t border-slate-100">
+                    <div>
+                        <button id="clearBtn" class="text-xs text-slate-400 hover:text-slate-600 font-medium transition px-2 py-2">Clear Stream View</button>
+                    </div>
                 </div>
             </div>
 
             <main class="flex-grow">
                 <div class="bg-slate-950 p-6 rounded-3xl shadow-xl border border-slate-900 relative overflow-hidden h-full flex flex-col">
-                    <div class="flex justify-between items-center pb-4 mb-2 border-b border-slate-800 text-xs">
-                        <div class="flex items-center gap-2">
-                            <span class="w-3 h-3 bg-slate-800 rounded-full inline-block"></span>
-                            <span class="w-3 h-3 bg-slate-800 rounded-full inline-block"></span>
-                            <span class="w-3 h-3 bg-slate-800 rounded-full inline-block"></span>
-                        </div>
-                    </div>
-
                     <div id="terminalLog" class="terminal-container overflow-y-auto val-mono text-sm p-2 text-slate-300 space-y-1 custom-scrollbar selection:bg-slate-800 flex-grow"></div>
                 </div>
             </main>
@@ -143,13 +144,26 @@
 </div>
 
 <script>
+    // Unified entry module pointer (swaps to polyfill dynamically on Android)
+    let serialModule = navigator.serial;
+
     let port = null;
     let reader = null;
     let keepReading = false;
     let readLoopPromise = null;
     
-    // Core buffer variable ensuring partial frames are safely reassembled
     let streamLineAccumulator = ""; 
+
+    // Capture control states
+    let isCapturing = false;
+
+    // Dynamic In-Memory Stores matching Python structure
+    let dataStores = {
+        SECTOR: [],
+        MEASUREMENT: [],
+        OBSERVATION: [],
+        DATA: []
+    };
 
     // DOM bindings
     const connectBtn = document.getElementById('connectBtn');
@@ -160,11 +174,19 @@
     const terminalLog = document.getElementById('terminalLog');
     const statusBadge = document.getElementById('statusBadge');
     const clearBtn = document.getElementById('clearBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
     const macroElements = document.querySelectorAll('.macro-element');
 
-    // Web Serial Framework Check
-    if (!('serial' in navigator)) {
-        alert("Web Serial API is unsupported on this browser version. Use Chrome, Edge, or Opera.");
+    // JS Regex patterns mirroring Python script definitions
+    const TYPE_PATTERN = /\b(SECTOR|MEASUREMENT|OBSERVATION|DATA)\s*:\s*([^\r\n]+)/gi;
+    const TRAILING_NOISE_PATTERNS = [
+        /\s*\(<[^>]*>.*$/g,       
+        /\s*\(defmt:[^)]*\).*$/g  
+    ];
+
+    // Expanded environmental evaluation handling WebUSB bridges
+    if (!('serial' in navigator) && !('usb' in navigator)) {
+        alert("Web Serial and WebUSB APIs are completely unsupported on this browser. Use Chrome or Edge over HTTPS.");
         connectBtn.disabled = true;
     }
 
@@ -178,8 +200,20 @@
 
     async function connectDevice() {
         try {
+            // Android/Mobile detection: Transparently stream down the WebUSB Serial Polyfill wrapper
+            if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && 'usb' in navigator) {
+                if (serialModule === navigator.serial) { // Safeguard duplicate injections
+                    appendLog('SYS', 'Android browser detected. Loading WebUSB driver polyfill bridge...');
+                    const polyfill = await import("https://cdn.jsdelivr.net/npm/web-serial-polyfill@1.0.15/+esm");
+                    serialModule = polyfill.serial;
+                }
+            }
+
             if (!port) {
-                port = await navigator.serial.requestPort();
+                if (!serialModule) {
+                    throw new Error("No compatible connection layer (Web Serial/WebUSB) available.");
+                }
+                port = await serialModule.requestPort();
             }
             
             try {
@@ -187,7 +221,7 @@
                 appendLog('SYS', 'Target hardware communication active.');
             } catch (openError) {
                 if (openError.message.includes("already open")) {
-                    appendLog('SYS', 'Port channel was already mapped open under-the-hood. Stream re-attaching...');
+                    appendLog('SYS', 'Port channel was already open. Stream re-attaching...');
                 } else {
                     throw openError;
                 }
@@ -197,7 +231,6 @@
             keepReading = true;
             readLoopPromise = readSerialStream(); 
 
-            // Automatically emit the help command trigger token on a safe thread block delay
             setTimeout(() => {
                 transmitPayload('?');
             }, 150);
@@ -210,11 +243,10 @@
 
     async function disconnectDevice() {
         keepReading = false;
+        isCapturing = false;
         
         if (reader) {
-            try {
-                await reader.cancel();
-            } catch (e) {}
+            try { await reader.cancel(); } catch (e) {}
         }
         
         if (readLoopPromise) {
@@ -235,40 +267,52 @@
         port = null;
     }
 
-    // Stream line processing reassembler engine
+    // High performance stream reader utilizing stream piping
     async function readSerialStream() {
-        const textDecoder = new TextDecoder();
-        
         while (port && port.readable && keepReading) {
             try {
-                reader = port.readable.getReader();
+                const textDecoderStream = new TextDecoderStream();
+                const streamPipePromise = port.readable.pipeTo(textDecoderStream.writable);
                 
+                reader = textDecoderStream.readable.getReader();
+                streamLineAccumulator = ""; 
+
                 while (keepReading) {
                     const { value, done } = await reader.read();
                     if (done) break;
                     
                     if (value) {
-                        // Concat incoming binary buffers smoothly via the stream decoder flag
-                        streamLineAccumulator += textDecoder.decode(value, { stream: true });
+                        streamLineAccumulator += value;
                         
-                        // Parse looking for structural newline marks
-                        let completedLines = streamLineAccumulator.split("\n");
-                        
-                        // Pop off incomplete split fragment string to process on subsequent chunks
-                        streamLineAccumulator = completedLines.pop();
-                        
-                        // Safely emit completely printed string vectors
-                        for (const line of completedLines) {
+                        let newlineIndex;
+                        while ((newlineIndex = streamLineAccumulator.indexOf('\n')) !== -1) {
+                            const line = streamLineAccumulator.slice(0, newlineIndex);
+                            streamLineAccumulator = streamLineAccumulator.slice(newlineIndex + 1);
+                            
                             let cleanStr = line.trim();
                             if (cleanStr.length > 0) {
                                 appendLog('RX', cleanStr);
+                                
+                                if (isCapturing) {
+                                    if (cleanStr.toLowerCase().includes("download finished")) {
+                                        processAndTriggerDownload();
+                                    } else {
+                                        parseAndStoreLog(cleanStr);
+                                    }
+                                }
                             }
+                        }
+                        
+                        if (streamLineAccumulator.length > 65536) { 
+                            streamLineAccumulator = ""; 
                         }
                     }
                 }
+                await streamPipePromise;
             } catch (error) {
                 if (keepReading) {
-                    appendLog('ERR', `Operational fault caught in hardware poll loop: ${error.message}`);
+                    appendLog('ERR', `Communication exception occurred: ${error.message}. Executing auto-disconnect...`);
+                    await disconnectDevice();
                 }
                 break;
             } finally {
@@ -279,6 +323,128 @@
             }
         }
     }
+
+    // Demangling engine matching Python's pattern extraction 
+    function parseAndStoreLog(rawLine) {
+        TYPE_PATTERN.lastIndex = 0;
+        let match;
+        
+        while ((match = TYPE_PATTERN.exec(rawLine)) !== null) {
+            const mtype = match[1].toUpperCase();
+            let payload = match[2].trim();
+            
+            if (!dataStores[mtype]) continue;
+
+            for (let pat of TRAILING_NOISE_PATTERNS) {
+                payload = payload.replace(pat, "");
+            }
+            if (payload.includes(" (<")) {
+                payload = payload.split(" (<")[0].trim();
+            }
+            
+            payload = payload.trim();
+            if (!payload) continue;
+
+            let segments = [payload];
+            if (payload.includes(";") && !payload.includes(",")) {
+                segments = payload.split(";").map(s => s.trim()).filter(s => s.length > 0);
+            }
+
+            for (let seg of segments) {
+                let parsedRow = seg.split(",").map(cell => {
+                    let c = cell.trim();
+                    if (c.startsWith('"') && c.endsWith('"')) {
+                        c = c.slice(1, -1).trim();
+                    }
+                    return c;
+                });
+                dataStores[mtype].push(parsedRow);
+            }
+        }
+    }
+
+    // Helper utility to safely construct valid CSV file contents
+    function convertToCSVString(arrayOfRows) {
+        return arrayOfRows.map(row => 
+            row.map(cell => {
+                let cleanCell = cell.replace(/"/g, '""');
+                if (cleanCell.includes(',') || cleanCell.includes('"') || cleanCell.includes('\n') || cleanCell.includes('\r')) {
+                    return `"${cleanCell}"`;
+                }
+                return cleanCell;
+            }).join(',')
+        ).join('\r\n');
+    }
+
+    // Compiles files, bundles them into zip, and cleans tracking gates
+    function processAndTriggerDownload() {
+        const totalRows = dataStores.SECTOR.length + dataStores.MEASUREMENT.length + dataStores.OBSERVATION.length + dataStores.DATA.length;
+        
+        if (totalRows === 0) {
+            appendLog('ERR', 'Firmware reported end of download, but no structured log frames were captured.');
+            isCapturing = false;
+            setSystemState(true); 
+            return;
+        }
+
+        try {
+            const zip = new JSZip();
+            zip.file("sector.csv", convertToCSVString(dataStores.SECTOR));
+            zip.file("measurement.csv", convertToCSVString(dataStores.MEASUREMENT));
+            zip.file("observation.csv", convertToCSVString(dataStores.OBSERVATION));
+            zip.file("data.csv", convertToCSVString(dataStores.DATA));
+
+            zip.generateAsync({ type: "blob" }).then(function (content) {
+                const url = window.URL.createObjectURL(content);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+                a.download = `tahmo_wlm_logs_${timestamp}.zip`;
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                appendLog('SYS', `Successfully saved file bundle containing ${totalRows} logs.`);
+            });
+        } catch (err) {
+            alert("Error packaging download zip structure: " + err.message);
+        } finally {
+            isCapturing = false;
+            setSystemState(true); 
+        }
+    }
+
+    // Trigger explicit download command and listen for finish token
+    downloadBtn.addEventListener('click', async () => {
+        if (!port || !port.writable) {
+            alert("No device connection active to prompt hardware memory download dump.");
+            return;
+        }
+
+        dataStores.SECTOR = [];
+        dataStores.MEASUREMENT = [];
+        dataStores.OBSERVATION = [];
+        dataStores.DATA = [];
+
+        isCapturing = true;
+        
+        connectBtn.disabled = true;
+        txInput.disabled = true;
+        sendBtn.disabled = true;
+        macroElements.forEach(element => element.disabled = true);
+        
+        downloadBtn.disabled = true;
+        downloadBtn.innerText = "Downloading...";
+        
+        appendLog('SYS', 'Download requested. Capture active. Awaiting "download finished" termination token...');
+
+        await transmitPayload("download");
+    });
 
     async function transmitPayload(payloadString) {
         if (!port || !port.writable) return;
@@ -296,11 +462,11 @@
 
             appendLog('TX', payloadString.trim());
         } catch (error) {
-            appendLog('ERR', `Transmission system fault encountered: ${error.message}`);
+            appendLog('ERR', `Transmission exception caught: ${error.message}. Executing auto-disconnect...`);
+            await disconnectDevice();
         }
     }
 
-    // Command Macros Triggers
     function sendMacro(cmdName) {
         transmitPayload(cmdName);
     }
@@ -330,7 +496,6 @@
         transmitPayload(`setconfig measurements ${time} ${count} ${duration}`);
     }
 
-    // User Transmit Interaction Handlers
     sendBtn.addEventListener('click', () => {
         transmitPayload(txInput.value);
         txInput.value = '';
@@ -347,7 +512,6 @@
         terminalLog.innerHTML = `<div class="text-slate-600 text-xs italic">[Record view buffer wiped]</div>`;
     });
 
-    // Logging Core Append Layout Function
     function appendLog(type, content) {
         const time = new Date().toISOString().split('T')[1].slice(0, -1);
         const escapedContent = content.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -364,12 +528,18 @@
         }
 
         terminalLog.insertAdjacentHTML('beforeend', uiRow);
+        
+        if (terminalLog.children.length > 400) {
+            for (let i = 0; i < 100; i++) {
+                if (terminalLog.firstChild) terminalLog.removeChild(terminalLog.firstChild);
+            }
+        }
         terminalLog.scrollTop = terminalLog.scrollHeight;
     }
 
-    // Sync Interface Visual Element States
     function setSystemState(connected) {
         if (connected) {
+            connectBtn.disabled = false;
             connectBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'shadow-blue-100');
             connectBtn.classList.add('bg-rose-600', 'hover:bg-rose-700', 'shadow-rose-100');
             connectBtnText.innerText = "Disconnect Target";
@@ -378,10 +548,15 @@
 
             txInput.disabled = false;
             sendBtn.disabled = false;
-            statusBadge.innerText = "Connected Active";
+            
+            downloadBtn.disabled = false;
+            downloadBtn.innerText = "Download memory";
+            
+            statusBadge.innerText = "Connected";
             statusBadge.className = "text-[10px] font-black text-emerald-500 uppercase tracking-wide";
             macroElements.forEach(element => element.disabled = false);
         } else {
+            connectBtn.disabled = false;
             connectBtn.classList.remove('bg-rose-600', 'hover:bg-rose-700', 'shadow-rose-100');
             connectBtn.classList.add('bg-blue-600', 'hover:bg-blue-700', 'shadow-blue-100');
             connectBtnText.innerText = "Connect WLM Device";
@@ -390,6 +565,10 @@
 
             txInput.disabled = true;
             sendBtn.disabled = true;
+            
+            downloadBtn.disabled = true;
+            downloadBtn.innerText = "Download memory";
+            
             statusBadge.innerText = "Disconnected";
             statusBadge.className = "text-[10px] font-black text-red-500 uppercase tracking-wide";
             macroElements.forEach(element => element.disabled = true);
