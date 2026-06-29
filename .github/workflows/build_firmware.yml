@@ -44,12 +44,13 @@ jobs:
 
     # 5. Compile your firmware in Release mode
     - name: Build Rust Firmware
+      working-directory: ./control
       run: cargo build --release
 
     # 6. Convert the generated ELF binary to a UF2 file
     - name: Convert to UF2
       run: |
-        picotool uf2 convert ./target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/wlm-firmware.uf2
+        picotool uf2 convert ./control/target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/wlm-firmware.uf2
 
     # 7. Save the .uf2 file so you can grab it from your browser
     - name: Upload UF2 Artifact
