@@ -10,10 +10,15 @@ jobs:
   build-and-convert:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
     # 1. Download your code onto the GitHub runner
     - name: Checkout Repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     # 2. Install the target ARM architecture for Rust
     - name: Set up Rust Toolchain
@@ -52,9 +57,13 @@ jobs:
       run: |
         picotool uf2 convert ./control/target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/wlm-firmware.uf2
 
-    # 7. Save the .uf2 file so you can grab it from your browser
-    - name: Upload UF2 Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: wlm-firmware-uf2
-        path: ./docs/wlm-firmware.uf2
+    # 7. Automatically commit and push the new UF2 file back to your main branch
+    - name: Commit and Push UF2 to Repository
+      if: github.event_name == 'push'
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add docs/wlm-firmware.uf2
+        # '[skip ci]' in the commit message prevents an infinite workflow loop
+        git commit -m "Automated firmware deployment [skip ci]" || true
+        git push
