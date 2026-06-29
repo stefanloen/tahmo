@@ -44,7 +44,6 @@ mod scheduler;
 mod messages;
 mod battery;
 mod monitor;
-mod dump;
 mod usb;
 mod interface;
 
