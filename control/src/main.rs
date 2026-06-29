@@ -179,9 +179,6 @@ async fn main(spawner: Spawner) {
     rockblock.power_off().await;
     info!("[main] RockBlock powered off");
 
-    // Dump pheripheral
-    let dump_pin = Input::new(p.PIN_25, gpio::Pull::Up);
-
     // Storage peripheral
     let storage = FlashStorage::new(p.FLASH, false);
     {
@@ -198,15 +195,6 @@ async fn main(spawner: Spawner) {
     let result = spawner.spawn(watchdog_feeder(wdg_wake, wdg_done));
     if result.is_err() {
         error!("Failed to spawn watchdog feeder task: {}", result.unwrap_err());
-    }
-
-    if dump_pin.is_low() {
-        info!("[main] dump pin is low, dumping storage and halting");
-        Timer::after_millis(500).await;
-        let start = Instant::now();
-        dump::dump(&STORAGE).await;
-        info!("[main] dump complete in {} ms, halting", start.elapsed().as_millis());
-        return;
     }
 
     info!("[main] spawning tasks");

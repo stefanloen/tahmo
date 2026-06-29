@@ -15,7 +15,7 @@ use crate::storage::MeasurementStorage;
 use crate::types::{Event, MAX_EVENTS, MAX_SECTORS, Measurement, NUM_MEASUREMENTS, Sector};
 use crate::StorageType;
 
-const MEASUREMENT_PACKET_SIZE: usize = 6;
+const MEASUREMENT_PACKET_SIZE: usize = 10;
 const PACKET_METADATA_SIZE: usize = 10;
 const PACKET_MEASUREMENT_COUNT_SIZE: usize = 1;
 const MAX_MEASUREMENT_PACKETS: usize = 10;
@@ -34,16 +34,20 @@ pub struct MeasurementPacket {
     relative_height_std: u8,
     num_observations_used: u8,
     num_observations_seen: u8,
+    start_time_minutes: u16,
+    end_time_minutes: u16,
 }
 
 impl MeasurementPacket {
-    pub fn new(uid: u8, relative_height_mean: u16, relative_height_std: u8, num_observations_used: u8, num_observations_seen: u8) -> Self {
+    pub fn new(uid: u8, relative_height_mean: u16, relative_height_std: u8, num_observations_used: u8, num_observations_seen: u8, start_time_minutes: u16, end_time_minutes: u16) -> Self {
         Self {
             uid,
             relative_height_mean,
             relative_height_std,
             num_observations_used,
             num_observations_seen,
+            start_time_minutes,
+            end_time_minutes
         }
     }
 
@@ -54,6 +58,8 @@ impl MeasurementPacket {
         data[3] = self.relative_height_std;
         data[4] = self.num_observations_used;
         data[5] = self.num_observations_seen;
+        data[6..8].copy_from_slice(&self.start_time_minutes.to_le_bytes());
+        data[8..10].copy_from_slice(&self.end_time_minutes.to_le_bytes());
         data
     }
 }
@@ -372,6 +378,9 @@ async fn get_measurement_packet(storage: &'static StorageType, measurement_index
         f32_to_u8(measurement.std, 0.0, MAX_STANDARD_DEVIATION),
         measurement.observations.len() as u8,
         measurement.num_seen as u8,
+        (measurement.start_time / 60) as u16,
+        (measurement.end_time / 60) as u16,
+
     );
     info!(
         "[comm] Read measurement {} (with {} observations, mean {}, std {})", 

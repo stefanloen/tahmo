@@ -114,9 +114,12 @@
                             <th class="p-4 border-b">Thing</th>
                             <th class="p-4 border-b">Batt (mV)</th>
                             <th class="p-4 border-b">Temp (°C)</th>
-                            <th class="p-4 border-b">Bat Low</th>
+                            <th class="p-4 border-b">Bat</th>
                             <th class="p-4 border-b">F / No / Ch / St Fractions</th>
                             <th class="p-4 border-b">RH Mean (m)</th>
+                            <th class="p-4 border-b">Start</th>
+                            <th class="p-4 border-b">End</th>
+                            <th class="p-4 border-b">Obs (Used / Seen)</th>
                             <th class="p-4 border-b">Payload</th>
                         </tr>
                     </thead>
@@ -131,7 +134,8 @@
     const MIN_TEMP_C = -30.0, MAX_TEMP_C = 80.0;
     const MIN_BATT_MV = 2000, MAX_BATT_MV = 5000;
     const MAX_REL_HEIGHT = 20.0;
-    const HEADER_OFFSET = 11, MEAS_SIZE = 6;
+    const HEADER_OFFSET = 11; 
+    const MEAS_SIZE = 10;
 
     let allRecords = [];
     let charts = {};
@@ -157,9 +161,17 @@
         return bytes;
     }
 
+    // Converts total minutes of the day to a clean HH:MM string format
+    function formatMinutesToTime(totalMinutes) {
+        if (isNaN(totalMinutes) || totalMinutes === null) return '-';
+        const hours = Math.floor(totalMinutes / 60) % 24;
+        const minutes = totalMinutes % 60;
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+    }
+
     function decodePayload(hex) {
         const bytes = hexToBytes(hex);
-        if (!bytes || bytes.length < 11) return null;
+        if (!bytes || bytes.length < HEADER_OFFSET) return null;
         
         const battery = Math.round(mapValue(bytes[0], 255, MIN_BATT_MV, MAX_BATT_MV));
         const temp = parseFloat(mapValue(bytes[1], 255, MIN_TEMP_C, MAX_TEMP_C).toFixed(2));
@@ -176,10 +188,23 @@
         for (let j = 0; j < measCount; j++) {
             let i = HEADER_OFFSET + (j * MEAS_SIZE);
             if (i + MEAS_SIZE > bytes.length) break;
+            
             const rawRelMean = bytes[i+1] | (bytes[i+2] << 8);
-            measurements.push({ rh: parseFloat(mapValue(rawRelMean, 65535, 0, MAX_REL_HEIGHT).toFixed(3)) });
+            const used = bytes[i+4];
+            const seen = bytes[i+5];
+            
+            const startTimeMin = bytes[i+6] | (bytes[i+7] << 8);
+            const endTimeMin = bytes[i+8] | (bytes[i+9] << 8);
+            
+            measurements.push({ 
+                rh: parseFloat(mapValue(rawRelMean, 65535, 0, MAX_REL_HEIGHT).toFixed(3)),
+                used: used,
+                seen: seen,
+                startTimeFormatted: formatMinutesToTime(startTimeMin),
+                endTimeFormatted: formatMinutesToTime(endTimeMin)
+            });
         }
-        return { battery, temp, fault, noInput, charging, standby, batLow, measurements, raw: hex };
+        return { battery, temp, fault, noInput, charging, standby, batLow, measurements, measCount, raw: hex };
     }
 
     document.getElementById('csvFile').addEventListener('change', function(e) {
@@ -211,7 +236,6 @@
         allRecords.sort((a, b) => a.timestamp - b.timestamp);
 
         if (allRecords.length > 0) {
-            // Extract unique 'Thing' properties to fill our dropdown option list dynamically
             thingSelect.innerHTML = '<option value="all">All Things</option>';
             const uniqueThings = [...new Set(allRecords.map(r => r.thing))];
             uniqueThings.forEach(thing => {
@@ -242,10 +266,8 @@
             end = parseInt(endInput.value);
         }
 
-        // Apply slice window filtering first
         let slicedRecords = allRecords.slice(start, end + 1);
         
-        // Filter elements based on selection values
         const selectedThing = thingSelect.value;
         filteredRecords = slicedRecords.filter(r => selectedThing === 'all' || r.thing === selectedThing);
         
@@ -260,23 +282,29 @@
         drawChart('tempChart', labels, filteredRecords.map(r => r.temp), '#f97316');
         drawChart('rhChart', labels, filteredRecords.map(r => r.measurements[0]?.rh || 0), '#10b981');
 
-        tbody.innerHTML = filteredRecords.map(r => `
-            <tr class="hover:bg-slate-50/80 transition-colors">
-                <td class="p-4 val-mono text-[10px] text-slate-500">${r.timeLabel}</td>
-                <td class="p-4 font-bold text-slate-700">${r.thing}</td>
-                <td class="p-4 font-semibold text-blue-600">${r.battery}</td>
-                <td class="p-4 font-semibold text-orange-600">${r.temp}</td>
-                <td class="p-4 font-semibold ${r.batLow === 'Low' ? 'text-red-600 font-bold' : 'text-slate-500'}">${r.batLow}</td>
-                <td class="p-4 val-mono text-xs text-slate-600 font-medium">
-                    <span class="text-red-500">${r.fault}</span> / 
-                    <span class="text-slate-400">${r.noInput}</span> / 
-                    <span class="text-blue-500">${r.charging}</span> / 
-                    <span class="text-orange-400">${r.standby}</span>
-                </td>
-                <td class="p-4 font-semibold text-emerald-600">${r.measurements[0]?.rh || '0'}</td>
-                <td class="p-4 text-[9px] val-mono text-slate-300 truncate max-w-[150px]" title="${r.raw}">${r.raw}</td>
-            </tr>
-        `).reverse().join('');
+        tbody.innerHTML = filteredRecords.map(r => {
+            const m0 = r.measurements[0] || { rh: '0', startTimeFormatted: '-', endTimeFormatted: '-', used: '-', seen: '-' };
+            return `
+                <tr class="hover:bg-slate-50/80 transition-colors">
+                    <td class="p-4 val-mono text-[10px] text-slate-500">${r.timeLabel}</td>
+                    <td class="p-4 font-bold text-slate-700">${r.thing}</td>
+                    <td class="p-4 font-semibold text-blue-600">${r.battery}</td>
+                    <td class="p-4 font-semibold text-orange-600">${r.temp}</td>
+                    <td class="p-4 font-semibold ${r.batLow === 'Low' ? 'text-red-600 font-bold' : 'text-slate-500'}">${r.batLow}</td>
+                    <td class="p-4 val-mono text-xs text-slate-600 font-medium">
+                        <span class="text-red-500">${r.fault}</span> / 
+                        <span class="text-slate-400">${r.noInput}</span> / 
+                        <span class="text-blue-500">${r.charging}</span> / 
+                        <span class="text-orange-400">${r.standby}</span>
+                    </td>
+                    <td class="p-4 font-semibold text-emerald-600">${m0.rh}</td>
+                    <td class="p-4 val-mono font-medium text-slate-600">${m0.startTimeFormatted}</td>
+                    <td class="p-4 val-mono font-medium text-slate-600">${m0.endTimeFormatted}</td>
+                    <td class="p-4 val-mono font-bold text-indigo-600">${m0.used} / ${m0.seen}</td>
+                    <td class="p-4 text-[9px] val-mono text-slate-300 truncate max-w-[150px]" title="${r.raw}">${r.raw}</td>
+                </tr>
+            `;
+        }).reverse().join('');
     }
 
     function drawChart(id, labels, data, color) {
@@ -309,8 +337,11 @@
     }
 
     function exportToCSV() {
-        let csvContent = "data:text/csv;charset=utf-8,Time,Thing,Battery_mV,Temp_C,Bat_Low,Fault_Frac,NoInput_Frac,Charging_Frac,Standby_Frac,RH_m,Payload\n" 
-            + filteredRecords.map(r => `${r.timeLabel},${r.thing},${r.battery},${r.temp},${r.batLow},${r.fault},${r.noInput},${r.charging},${r.standby},${r.measurements[0]?.rh || 0},${r.raw}`).join("\n");
+        let csvContent = "data:text/csv;charset=utf-8,Time,Thing,Battery_mV,Temp_C,Bat_Low,Fault_Frac,NoInput_Frac,Charging_Frac,Standby_Frac,RH_m,Start,End,Obs_Used,Obs_Seen,Payload\n" 
+            + filteredRecords.map(r => {
+                const m0 = r.measurements[0] || { rh: 0, startTimeFormatted: '-', endTimeFormatted: '-', used: 0, seen: 0 };
+                return `${r.timeLabel},${r.thing},${r.battery},${r.temp},${r.batLow},${r.fault},${r.noInput},${r.charging},${r.standby},${m0.rh},${m0.startTimeFormatted},${m0.endTimeFormatted},${m0.used},${m0.seen},${r.raw}`;
+            }).join("\n");
         const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
         link.setAttribute("href", encodedUri);
