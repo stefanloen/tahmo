@@ -25,18 +25,14 @@ jobs:
     - name: Rust Cache
       uses: swatinem/rust-cache@v2
 
-    # 4. Install libusb and compile picotool directly from source
-    # (Pre-compiled picotool binaries have dynamic linking quirks on Ubuntu environments)
-    - name: Build and Install picotool
+    # 4. Download and Install pre-compiled picotool binary
+    - name: Install picotool
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential pkg-config libusb-1.0-0-dev cmake
-        git clone --depth 1 https://github.com/raspberrypi/picotool.git
-        cd picotool
-        mkdir build && cd build
-        cmake ..
-        make -j$(nproc)
-        sudo make install
+        sudo apt-get install -y libusb-1.0-0
+        # Download official static debian package from Raspberry Pi's repository
+        wget https://archive.raspberrypi.org/debian/pool/main/p/picotool/picotool_2.1.0-1_amd64.deb
+        sudo dpkg -i picotool_2.1.0-1_amd64.deb
 
     # 5. Compile your firmware in Release mode
     - name: Build Rust Firmware
