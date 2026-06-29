@@ -144,7 +144,6 @@
 </div>
 
 <script>
-    // Unified entry module pointer (swaps to polyfill dynamically on Android)
     let serialModule = navigator.serial;
 
     let port = null;
@@ -184,7 +183,6 @@
         /\s*\(defmt:[^)]*\).*$/g  
     ];
 
-    // Expanded environmental evaluation handling WebUSB bridges
     if (!('serial' in navigator) && !('usb' in navigator)) {
         alert("Web Serial and WebUSB APIs are completely unsupported on this browser. Use Chrome or Edge over HTTPS.");
         connectBtn.disabled = true;
@@ -202,7 +200,7 @@
         try {
             // Android/Mobile detection: Transparently stream down the WebUSB Serial Polyfill wrapper
             if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && 'usb' in navigator) {
-                if (serialModule === navigator.serial) { // Safeguard duplicate injections
+                if (serialModule === navigator.serial) { 
                     appendLog('SYS', 'Android browser detected. Loading WebUSB driver polyfill bridge...');
                     const polyfill = await import("https://cdn.jsdelivr.net/npm/web-serial-polyfill@1.0.15/+esm");
                     serialModule = polyfill.serial;
@@ -213,7 +211,22 @@
                 if (!serialModule) {
                     throw new Error("No compatible connection layer (Web Serial/WebUSB) available.");
                 }
-                port = await serialModule.requestPort();
+                
+                // CRITICAL FIX: Explicit target parameters mapped to your custom RP235X embassy configurations
+                const usbFilters = [
+                    { usbVendorId: 0x1209, usbProductId: 0x0001 }, // TAHMO WLM (Custom pid.codes VID/PID)
+                    { usbVendorId: 0x2e8a },                       // Standard Raspberry Pi RP2040/RP2350 CDC
+                    { usbVendorId: 0x1a86 },                       // CH340 / CH341
+                    { usbVendorId: 0x10c4 },                       // CP210x Silicon Labs
+                    { usbVendorId: 0x0403 }                        // FTDI
+                ];
+
+                try {
+                    port = await serialModule.requestPort({ filters: usbFilters });
+                } catch (filterError) {
+                    console.warn("Filtered request failed, attempting unfiltered fallback...", filterError);
+                    port = await serialModule.requestPort();
+                }
             }
             
             try {
