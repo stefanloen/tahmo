@@ -1,0 +1,69 @@
+name: Build and Convert Firmware
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-convert:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+    # 1. Download your code onto the GitHub runner
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # 2. Install the target ARM architecture for Rust
+    - name: Set up Rust Toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: thumbv8m.main-none-eabihf
+
+    # 3. Cache dependencies so subsequent builds are lightning fast
+    - name: Rust Cache
+      uses: swatinem/rust-cache@v2
+
+    # 4. Install dependencies, clone Pico SDK, and compile picotool natively
+    - name: Build and Install picotool
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential pkg-config libusb-1.0-0-dev cmake
+        
+        # Clone a minimal version of the Pico SDK so picotool can build
+        git clone --depth 1 https://github.com/raspberrypi/pico-sdk.git
+        
+        # Clone and build picotool using the SDK path
+        git clone --depth 1 https://github.com/raspberrypi/picotool.git
+        cd picotool
+        mkdir build && cd build
+        cmake -DPICO_SDK_PATH=$GITHUB_WORKSPACE/pico-sdk ..
+        make -j$(nproc)
+        sudo make install
+
+    # 5. Compile your firmware in Release mode
+    - name: Build Rust Firmware
+      working-directory: ./control
+      run: cargo build --release
+
+    # 6. Convert the generated ELF binary to a UF2 file
+    - name: Convert to UF2
+      run: |
+        picotool uf2 convert ./control/target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/files/wlm-firmware.uf2
+
+    # 7. Automatically commit and push the new UF2 file back to your main branch
+    - name: Commit and Push UF2 to Repository
+      if: github.event_name == 'push'
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add docs/files/wlm-firmware.uf2
+        # '[skip ci]' in the commit message prevents an infinite workflow loop
+        git commit -m "Automated firmware deployment [skip ci]" || true
+        git push
