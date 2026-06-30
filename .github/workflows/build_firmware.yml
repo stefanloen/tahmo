@@ -55,7 +55,7 @@ jobs:
     # 6. Convert the generated ELF binary to a UF2 file
     - name: Convert to UF2
       run: |
-        picotool uf2 convert ./control/target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/wlm-firmware.uf2
+        picotool uf2 convert ./control/target/thumbv8m.main-none-eabihf/release/control -t elf ./docs/files/wlm-firmware.uf2
 
     # 7. Automatically commit and push the new UF2 file back to your main branch
     - name: Commit and Push UF2 to Repository
@@ -63,7 +63,7 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add docs/wlm-firmware.uf2
+        git add docs/files/wlm-firmware.uf2
         # '[skip ci]' in the commit message prevents an infinite workflow loop
         git commit -m "Automated firmware deployment [skip ci]" || true
         git push
