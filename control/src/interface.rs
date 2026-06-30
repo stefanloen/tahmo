@@ -203,8 +203,8 @@ download - Download memory
                                         interface.state = InterfaceState::SetAzimuth { min, max }
                                     }
                                     "height" => {
-                                        let min_val = parse_in_range(&mut writer, parts.next(), 0.0, 50.0, "Min height").await;
-                                        let max_val = parse_in_range(&mut writer, parts.next(), 0.0, 50.0, "Max height").await;
+                                        let min_val = parse_in_range(&mut writer, parts.next(), 0.0, 1000.0, "Min height").await;
+                                        let max_val = parse_in_range(&mut writer, parts.next(), 0.0, 1000.0, "Max height").await;
 
                                         let (Some(min), Some(max)) = (min_val, max_val) else { 
                                             continue; 

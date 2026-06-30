@@ -3,6 +3,9 @@ The repository for the water level measurement system from TAHMO.
 
 The project contains the following parts
 
+## analysis
+Provides tools for analysing GNSS date (similar to what is in the firmware).
+
 ## control
 Contains the firmware for the Pico 2. For installation ensure Rust is installed and use the following commands
 ```bash
@@ -19,22 +22,8 @@ Creating an uf2 file:
 ```bash
 $ picotool uf2 convert .\target\thumbv8m.main-none-eabihf\release\control -t elf control.uf2
 ```
-
-
-## analysis
-Provides tools for analysing GNSS date (similar to what is in the firmware), and for seeing the results from a firmware dump.
-
-## dashboard
-Contains the code for the dashboard. Ensure python is installedand use the following commands:
-```bash
-$ cd dashboard
-$ pip install flask
-```
-And to start the dashboard run:
-```bash
-$ cd dashboard
-$ python main.py
-```
+## docs
+Webpage tools for flashing, configuring, data viewing and documentation. Hosted at Github: [TAHMO WLM Dashboard](https://stefanloen.github.io/tahmo/)
 
 ## hardware
 Contains the KiCAD PCB design files as raw project folder and as archive. Also contains some design documentation.
