@@ -126,7 +126,6 @@
         if (!activeFileBytes) return;
 
         try {
-            // 1. Invoke directory picker
             const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
 
             // Lock UI controls to protect the running thread
@@ -138,8 +137,9 @@
             progressLabel.className = "text-xs font-bold text-slate-600";
             progressLabel.innerText = "Initializing flash write...";
 
-            // 2. Provision file handle
-            const fileHandle = await dirHandle.getFileHandle(targetFileName, { create: true });
+            const pureFileName = targetFileName.split('/').pop();
+            
+            const fileHandle = await dirHandle.getFileHandle(pureFileName, { create: true });
             const writableStream = await fileHandle.createWritable();
 
             const chunkSize = 65536; // 64KB blocks
