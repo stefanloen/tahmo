@@ -1,0 +1,115 @@
+(footprint "26650_soldertag"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -0.5 0)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "063edb78-5fe3-4ad4-bdc5-ddbdfe49e510")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "26650_soldertag"
+		(at 0 1 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "f846072c-66a2-4e2a-9aaa-5f181c5bcbe1")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "a9a1f79c-8dfe-476a-a05f-7a7267f88de3")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f6cfd69d-f09c-4dc9-9aae-01662a982800")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_text user "+"
+		(at -35.56 -5.08 0)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "f5f6d084-eedd-4264-9687-39621e15b2b5")
+		(effects
+			(font
+				(size 3 3)
+				(thickness 0.1)
+			)
+			(justify left bottom)
+		)
+	)
+	(fp_text user "_"
+		(at 31.75 -6.35 0)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "7e4ee735-c3bb-4709-aa41-9c2271d7516a")
+		(effects
+			(font
+				(size 3 3)
+				(thickness 0.1)
+			)
+			(justify left bottom)
+		)
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 2.5 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "9d0dd3c1-064f-4ba4-a393-28a26dbcc672")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" thru_hole roundrect
+		(at -33.5 0 90)
+		(size 9.9 2)
+		(drill oval 8.5 0.5)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(roundrect_rratio 0.5)
+		(uuid "d2e661b6-4094-4dff-9dee-d7a1f0f82ad5")
+	)
+	(pad "2" thru_hole roundrect
+		(at 33.5 0 90)
+		(size 9.9 2)
+		(drill oval 8.5 0.5)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(roundrect_rratio 0.5)
+		(uuid "bb590f24-cadd-41c3-a941-78fb264739bd")
+	)
+	(embedded_fonts no)
+)

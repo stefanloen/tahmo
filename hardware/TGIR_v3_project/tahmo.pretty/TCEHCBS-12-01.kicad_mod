@@ -1,0 +1,182 @@
+(footprint "TCEHCBS-12-01"
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0.381 -5.842 0)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "2a40aed5-1d97-4160-accf-40cd4b26e4c5")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "TCEHCBS-12-01"
+		(at 0.127 5.969 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "da466777-237f-4423-bb01-4d4fedcfb82f")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "98fea583-987d-4020-830f-1fd2627e92c3")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "3db08544-b0c7-42d7-bf88-8eb951150352")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_circle
+		(center 0 0)
+		(end 4.5 0)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "e41934ee-16e9-44ad-8db7-4694f36e70c0")
+	)
+	(fp_circle
+		(center 0 0)
+		(end 3.5 0)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "B.SilkS")
+		(uuid "df994648-b28b-4318-961a-882300fc8c66")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0.127 7.874 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "1fd526d0-514b-4b05-bf22-50deb614e3c9")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "" np_thru_hole circle
+		(at 0 0)
+		(size 3.9 3.9)
+		(drill 3.9)
+		(layers "*.Cu" "*.Mask")
+		(uuid "2d690e1d-bda3-463b-af64-4bfe63d4cd0e")
+	)
+	(zone
+		(net 0)
+		(net_name "")
+		(layer "F.SilkS")
+		(uuid "a80ea4fe-9d86-4228-8808-03723c4a74ef")
+		(hatch edge 0.5)
+		(connect_pads
+			(clearance 0)
+		)
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(keepout
+			(tracks not_allowed)
+			(vias not_allowed)
+			(pads not_allowed)
+			(copperpour not_allowed)
+			(footprints not_allowed)
+		)
+		(placement
+			(enabled no)
+			(sheetname "")
+		)
+		(fill
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+		)
+		(polygon
+			(pts
+				(arc
+					(start -4.5 0)
+					(mid 4.5 0)
+					(end -4.5 0)
+				)
+			)
+		)
+	)
+	(zone
+		(net 0)
+		(net_name "")
+		(layer "B.SilkS")
+		(uuid "270c3fcc-9bae-4e4e-bc62-e13078cf499e")
+		(hatch edge 0.5)
+		(connect_pads
+			(clearance 0)
+		)
+		(min_thickness 0.25)
+		(filled_areas_thickness no)
+		(keepout
+			(tracks not_allowed)
+			(vias not_allowed)
+			(pads not_allowed)
+			(copperpour not_allowed)
+			(footprints not_allowed)
+		)
+		(placement
+			(enabled no)
+			(sheetname "")
+		)
+		(fill
+			(thermal_gap 0.5)
+			(thermal_bridge_width 0.5)
+		)
+		(polygon
+			(pts
+				(arc
+					(start -3.5 0)
+					(mid 3.5 0)
+					(end -3.5 0)
+				)
+			)
+		)
+	)
+	(embedded_fonts no)
+	(model "C:/Users/stefa/Downloads/176683469-3-10035726/10035726.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -90 -0 -0)
+		)
+	)
+)

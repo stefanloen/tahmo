@@ -1,0 +1,201 @@
+(footprint "LGA-12"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "LGA-12")
+	(tags "Integrated Circuit")
+	(property "Reference" "IC**"
+		(at -0.38705 -2.2 0)
+		(layer "F.SilkS")
+		(uuid "57a55ff6-07ec-4b63-b52b-fdb0a83fcef0")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.254)
+			)
+		)
+	)
+	(property "Value" "LGA-12"
+		(at -0.38705 -0.06275 0)
+		(layer "F.SilkS")
+		(hide yes)
+		(uuid "248ead54-1e58-4e38-96ab-eca93a21237b")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.254)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "9a0b4274-c8b8-4a87-accc-2bad32531f4c")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "1689cfd8-abe3-4467-93a6-0b196cdaca8d")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_circle
+		(center -1.368 -0.748)
+		(end -1.368 -0.723)
+		(stroke
+			(width 0.254)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "71258655-4158-466f-b322-93741b06e34b")
+	)
+	(fp_line
+		(start -1 -1)
+		(end 1 -1)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "e1147f72-0f9a-4b0c-bd04-6c7d7477f88a")
+	)
+	(fp_line
+		(start -1 1)
+		(end -1 -1)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "4170fd71-4900-40b1-9474-5d07257ade50")
+	)
+	(fp_line
+		(start 1 -1)
+		(end 1 1)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "baa84d72-ab84-4f41-9765-59937fb79b03")
+	)
+	(fp_line
+		(start 1 1)
+		(end -1 1)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "34f07a4f-82d4-4332-bb50-d9ff2eb7a267")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 -4.3 0)
+		(layer "F.Fab")
+		(uuid "81424f7a-3d9a-4abd-817e-eb6c0ca56fbd")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.254)
+			)
+		)
+	)
+	(pad "1" smd rect
+		(at -0.8 -0.75 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "8a1252ff-3005-4879-a3fa-437cd4e6ca88")
+	)
+	(pad "2" smd rect
+		(at -0.8 -0.25 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "94b8c46a-d2b3-487a-8069-f837b7d3a3a5")
+	)
+	(pad "3" smd rect
+		(at -0.8 0.25 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "68a9ade6-108c-49c4-bea5-1cdb83274feb")
+	)
+	(pad "4" smd rect
+		(at -0.8 0.75 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "db96e2c5-f323-4099-b40c-585ee53ca0bc")
+	)
+	(pad "5" smd rect
+		(at -0.25 0.75 90)
+		(size 0.4 0.3)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "9e02632e-b6d1-4e4e-93c6-6b8119c27f6c")
+	)
+	(pad "6" smd rect
+		(at 0.25 0.75 90)
+		(size 0.4 0.3)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "ca6b8a3a-9a02-4d26-80bd-0e974cd6dead")
+	)
+	(pad "7" smd rect
+		(at 0.8 0.75 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "774dae76-766d-4f57-8604-0fc9b14de8d5")
+	)
+	(pad "8" smd rect
+		(at 0.8 0.25 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "93c13b8b-44b3-4081-b786-906ab9f1d56c")
+	)
+	(pad "9" smd rect
+		(at 0.8 -0.25 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "5d02af68-b94b-4bc0-9775-7ada6e020b96")
+	)
+	(pad "10" smd rect
+		(at 0.8 -0.75 90)
+		(size 0.3 0.375)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "ea70e438-5702-4c5f-ba94-2e4e55655532")
+	)
+	(pad "11" smd rect
+		(at 0.25 -0.75 90)
+		(size 0.375 0.3)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "ee9d40eb-3c2a-4161-b978-e8d90616f43c")
+	)
+	(pad "12" smd rect
+		(at -0.25 -0.75 90)
+		(size 0.375 0.3)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(uuid "dc6535ad-0580-443e-b387-51857a10b54f")
+	)
+	(embedded_fonts no)
+	(model "C:\\Users\\stefa\\OneDrive\\Documenten\\ZZP Loen\\Tahmo\\02. KiCAD\\02. wlm\\TGIR_v3\\libraries\\SamacSys_Parts.3dshapes\\LSM303AGRTR.stp"
+		(offset
+			(xyz 0 0 0.999999985)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 90 0 0)
+		)
+	)
+)
